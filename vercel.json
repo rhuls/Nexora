@@ -1,29 +1,20 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd frontend && npm ci && npm run build",
-  "outputDirectory": "frontend/dist",
-  "installCommand": "cd backend && npm ci && npx prisma generate && npm run build",
-  "functions": {
-    "api/index.js": {
-      "memory": 2048,
-      "maxDuration": 300,
-      "includeFiles": "backend/node_modules/.prisma/client/**"
+  "services": {
+    "backend": {
+      "root": "backend",
+      "framework": "fastify"
+    },
+    "frontend": {
+      "root": "frontend",
+      "framework": "vite"
     }
   },
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index"
-    },
-    {
-      "source": "/((?!api/).*)",
-      "destination": "/index.html"
-    }
+    { "source": "/api/(.*)", "destination": { "service": "backend" } },
+    { "source": "/(.*)", "destination": { "service": "frontend" } }
   ],
   "crons": [
-    {
-      "path": "/api/sync/run",
-      "schedule": "0 * * * *"
-    }
+    { "path": "/api/sync/run", "schedule": "0 * * * *" }
   ]
 }
