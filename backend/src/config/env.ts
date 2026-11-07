@@ -21,3 +21,17 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   return parsed.data;
 }
+
+// How long one season's import may hold its transaction. Two minutes suits a database on the same
+// host; a managed one across a network needs more, because the cost is round-trips rather than work.
+const IMPORT_TX_TIMEOUT_DEFAULT_MS = 120_000;
+
+export function importTransactionTimeoutMs(source: NodeJS.ProcessEnv = process.env): number {
+  const raw = source.IMPORT_TRANSACTION_TIMEOUT_MS;
+  if (raw === undefined || raw.trim() === '') return IMPORT_TX_TIMEOUT_DEFAULT_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 10_000 || parsed > 30 * 60_000) {
+    throw new Error('IMPORT_TRANSACTION_TIMEOUT_MS must be between 10000 and 1800000 milliseconds');
+  }
+  return Math.floor(parsed);
+}

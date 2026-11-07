@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateDataset } from '../src/data/synthetic/generator.js';
 import { SEED_REFERENCE_DATE } from '../src/data/synthetic/reference.js';
+import { importTransactionTimeoutMs } from '../src/config/env.js';
 
 const data = generateDataset();
 
@@ -83,5 +84,23 @@ describe('seed dataset', () => {
 
   it('contains genuine data gaps rather than filled-in values', () => {
     expect(data.matchStats.some((s) => s.corners === null || s.possession === null)).toBe(true);
+  });
+});
+
+describe('import transaction timeout', () => {
+  it('defaults to two minutes, which suits a database on the same host', () => {
+    expect(importTransactionTimeoutMs({})).toBe(120_000);
+    expect(importTransactionTimeoutMs({ IMPORT_TRANSACTION_TIMEOUT_MS: '' })).toBe(120_000);
+  });
+
+  it('can be raised for a managed database across a network', () => {
+    // A season against Neon spends its time on round-trips, not work, and overran 120s.
+    expect(importTransactionTimeoutMs({ IMPORT_TRANSACTION_TIMEOUT_MS: '600000' })).toBe(600_000);
+  });
+
+  it('refuses a value that would hide a hung import or fail instantly', () => {
+    for (const bad of ['0', '500', '9999', '99999999', 'soon', '-1']) {
+      expect(() => importTransactionTimeoutMs({ IMPORT_TRANSACTION_TIMEOUT_MS: bad })).toThrow(/between 10000 and 1800000/);
+    }
   });
 });

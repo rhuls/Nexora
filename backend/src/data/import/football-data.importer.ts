@@ -1,6 +1,7 @@
 import type { DataEnvironment, Match, Prisma, PrismaClient } from '@prisma/client';
 import type { DatasetRef, IDataProvider, ProviderCompetition, ProviderMatch, ProviderSeason, SourceWarning } from '../../providers/types.js';
 import { CURATED_TEAMS, type CuratedTeam } from '../identity/curated-teams.js';
+import { importTransactionTimeoutMs } from '../../config/env.js';
 import { TeamIdentityResolver, syncCuratedTeams } from '../identity/team-identity.js';
 import { emptySupplementaryCounts, fetchSupplementary, ingestSupplementary, type SupplementaryCounts, type SupplementaryData } from './supplementary.js';
 
@@ -123,7 +124,14 @@ export class FootballDataImporter {
     try {
       const prepared = await this.prepare(provider, request);
       warnings = prepared.warnings;
-      const counts = await this.db.$transaction((tx) => this.apply(tx, prepared, run.id), { timeout: 120_000, maxWait: 10_000 });
+      // A season is applied atomically, so the whole import either lands or none of it does.
+      // Against a local database that takes under a second; against a managed one every query
+      // pays network latency and 380 matches can exceed two minutes. The limit is therefore
+      // configurable rather than a constant that only suits one deployment.
+      const counts = await this.db.$transaction((tx) => this.apply(tx, prepared, run.id), {
+        timeout: importTransactionTimeoutMs(),
+        maxWait: 20_000,
+      });
       await this.db.importRun.update({
         where: { id: run.id },
         data: {

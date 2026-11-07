@@ -91,12 +91,28 @@ If you do have Node on the host, `cd backend && npx prisma migrate deploy` is eq
 
 The backbone is public files, so this costs nothing and needs no API key:
 
+A season is applied in a single transaction, so it either lands whole or not at all. That
+transaction defaults to a two-minute limit, which is generous locally and **not enough against a
+managed database**: the work is trivial but every one of the hundreds of queries pays network
+latency. Without raising it, each league fails at about 125 seconds with
+
+```
+Transaction already closed: ... The timeout for this transaction was 120000 ms
+```
+
+and rolls back cleanly, leaving nothing behind. Raise it with `IMPORT_TRANSACTION_TIMEOUT_MS`:
+
 ```sh
 for league in en.1 es.1 de.1 it.1 fr.1; do
-  docker compose run --rm --no-deps -e DATABASE_URL="$NEON_URL" \
+  docker compose run --rm --no-deps \
+    -e DATABASE_URL="$NEON_URL" \
+    -e IMPORT_TRANSACTION_TIMEOUT_MS=900000 \
     --entrypoint sh backend -c "node dist/data/import/cli.js --competition=$league --seasons=2026-27"
 done
 ```
+
+Expect roughly three to five minutes per league. It is a one-off: the sync worker keeps the live
+season current afterwards, and it changes only what has moved.
 
 Add `--seasons=2023-24` and so on for the historical seasons backtests need. The allowlist already
 carries 2023-24 through 2026-27 for all five leagues, so widening coverage is an import rather than
