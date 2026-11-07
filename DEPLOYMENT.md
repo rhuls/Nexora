@@ -162,6 +162,26 @@ install the platform chooses rather than relying on a per-service install comman
 
 Push the repository and connect it; no further configuration.
 
+### 6. Keeping the live season current
+
+**A Hobby plan allows one cron run per day**, which is too coarse mid-season: a match finished in
+the morning would not be scored until the next night. Vercel rejects anything more frequent at
+deploy time, so `vercel.json` schedules a daily pass as a backstop and the hourly schedule lives in
+`.github/workflows/sync.yml`, which costs nothing.
+
+Add two repository secrets under **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+|---|---|
+| `NEXORA_APP_URL` | the deployment's base URL, no trailing slash |
+| `NEXORA_API_TOKEN` | the same value set in the Vercel project |
+
+The workflow posts to `/api/sync/run` with the token as a bearer header, so the secret never
+reaches a log or a URL. Runs cannot overlap, and a late or skipped run costs only freshness: the
+pass is idempotent and the provider cache absorbs the repeat.
+
+Trigger one by hand from the **Actions** tab to confirm it works before relying on the schedule.
+
 ## What does not run on Vercel
 
 The model tooling is batch work, not request handling: `compare:models` takes about 105 seconds and

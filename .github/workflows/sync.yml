@@ -1,0 +1,57 @@
+# Keeps the live season current.
+#
+# Vercel's Hobby plan allows one cron run per day, which is too coarse for a season in progress:
+# a match finished in the morning would not be scored until the next night. This runs the same
+# endpoint hourly instead. The daily Vercel cron stays as a backstop if this workflow is disabled.
+#
+# Needs two repository secrets:
+#   NEXORA_APP_URL    the deployment's base URL, e.g. https://nexora.vercel.app (no trailing slash)
+#   NEXORA_API_TOKEN  the same value set in the Vercel project
+name: live sync
+
+on:
+  schedule:
+    # Hourly. GitHub may delay a scheduled run when its queues are busy; the sync is idempotent
+    # and cached, so a late or skipped run costs nothing but freshness.
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  # Never let a delayed run overlap the next one: two imports of the same season would contend.
+  group: live-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger a sync pass
+        env:
+          APP_URL: ${{ secrets.NEXORA_APP_URL }}
+          TOKEN: ${{ secrets.NEXORA_API_TOKEN }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$TOKEN" ]; then
+            echo "::error::NEXORA_APP_URL and NEXORA_API_TOKEN must both be set as repository secrets"
+            exit 1
+          fi
+          # --fail-with-body so a 4xx/5xx fails the job but still shows what the server said.
+          # The token is passed by header and never appears in the log.
+          status=$(curl --silent --show-error --fail-with-body \
+            --max-time 540 \
+            --write-out '%{http_code}' \
+            --output /tmp/sync.json \
+            -X POST "$APP_URL/api/sync/run" \
+            -H "Authorization: Bearer $TOKEN") || {
+              echo "::error::Sync failed (HTTP ${status:-no response})"
+              head -c 2000 /tmp/sync.json || true
+              exit 1
+            }
+          echo "HTTP $status"
+          # jq is present on ubuntu-latest. A summary, not a dump: the response carries per-league counts.
+          jq -r '
+            "duration: \(.durationMs / 1000 | floor)s",
+            (.imports[]?    | "  import     \(.status) \(.dataset)"),
+            (.enrichment[]? | "  enrichment \(.status) \(.dataset)"),
+            "  evaluated: \(.evaluated | tojson)"
+          ' /tmp/sync.json

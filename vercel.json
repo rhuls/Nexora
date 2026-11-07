@@ -11,10 +11,23 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": { "service": "backend" } },
-    { "source": "/(.*)", "destination": { "service": "frontend" } }
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "frontend"
+      }
+    }
   ],
   "crons": [
-    { "path": "/api/sync/run", "schedule": "0 * * * *" }
+    {
+      "path": "/api/sync/run",
+      "schedule": "0 3 * * *"
+    }
   ]
 }
