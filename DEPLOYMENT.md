@@ -49,6 +49,24 @@ revealing anything.
 Create a Neon project and take the **pooled** connection string (it contains `-pooler`). A
 serverless function is re-entered constantly, and an unpooled URL will exhaust Postgres.
 
+**Raise Prisma's timeouts.** A free Neon compute suspends after about five minutes idle, and waking
+it takes longer than Prisma's 10-second defaults. Without this the first call after a quiet spell
+fails with `P1001: Can't reach database server`, which reads like an outage and is not one:
+
+```
+?sslmode=require&connect_timeout=30&pool_timeout=30
+```
+
+Append it to `DATABASE_URL` everywhere — Vercel, the CLI, migrations. `channel_binding=require` is
+harmless to leave in; it is not the cause of that error despite looking like a likely suspect.
+
+Two symptoms worth telling apart, because they look alike and mean opposite things:
+
+| Error | Meaning |
+|---|---|
+| `Can't reach database server` | compute asleep, timeouts too short — raise them |
+| `Authentication failed` | the compute is awake and answering; the credential is wrong or was rotated |
+
 ### 2. Migrations
 
 Vercel has no boot step, so migrations do not run on deploy. Apply them from any machine that can
