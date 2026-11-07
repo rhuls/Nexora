@@ -1,0 +1,12 @@
+# Secrets: real values (database password, API_FOOTBALL_KEY) live only in the local .env.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store

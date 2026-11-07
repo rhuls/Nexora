@@ -1,0 +1,142 @@
+{
+  "fixture": {
+    "id": 1035038,
+    "referee": "Michael Oliver, England",
+    "timezone": "UTC",
+    "date": "2023-08-12T11:30:00+00:00",
+    "timestamp": 1691839800,
+    "venue": { "id": 494, "name": "Emirates Stadium", "city": "London" },
+    "status": { "long": "Match Finished", "short": "FT", "elapsed": 90 }
+  },
+  "league": { "id": 39, "name": "Premier League", "country": "England", "season": 2023, "round": "Regular Season - 1" },
+  "teams": {
+    "home": { "id": 42, "name": "Arsenal", "winner": true },
+    "away": { "id": 65, "name": "Nottingham Forest", "winner": false }
+  },
+  "goals": { "home": 2, "away": 1 },
+  "score": {
+    "halftime": { "home": 2, "away": 0 },
+    "fulltime": { "home": 2, "away": 1 },
+    "extratime": { "home": null, "away": null },
+    "penalty": { "home": null, "away": null }
+  },
+  "events": [
+    { "time": { "elapsed": 26, "extra": null }, "team": { "id": 42, "name": "Arsenal" }, "player": { "id": 1468, "name": "E. Nketiah" }, "assist": { "id": 1460, "name": "B. Saka" }, "type": "Goal", "detail": "Normal Goal", "comments": null },
+    { "time": { "elapsed": 32, "extra": null }, "team": { "id": 42, "name": "Arsenal" }, "player": { "id": 1460, "name": "B. Saka" }, "assist": { "id": null, "name": null }, "type": "Goal", "detail": "Normal Goal", "comments": null },
+    { "time": { "elapsed": 45, "extra": 2 }, "team": { "id": 65, "name": "Nottingham Forest" }, "player": { "id": 18766, "name": "M. Niakhaté" }, "assist": { "id": null, "name": null }, "type": "Card", "detail": "Yellow Card", "comments": "Foul" },
+    { "time": { "elapsed": 70, "extra": null }, "team": { "id": 42, "name": "Arsenal" }, "player": { "id": 1468, "name": "E. Nketiah" }, "assist": { "id": 978, "name": "K. Havertz" }, "type": "subst", "detail": "Substitution 1", "comments": null },
+    { "time": { "elapsed": 70, "extra": null }, "team": { "id": 42, "name": "Arsenal" }, "player": { "id": 1161, "name": "T. Partey" }, "assist": { "id": 47311, "name": "J. Timber" }, "type": "subst", "detail": "Substitution 2", "comments": null },
+    { "time": { "elapsed": 83, "extra": null }, "team": { "id": 65, "name": "Nottingham Forest" }, "player": { "id": 19147, "name": "T. Awoniyi" }, "assist": { "id": 19163, "name": "A. Elanga" }, "type": "Goal", "detail": "Normal Goal", "comments": null },
+    { "time": { "elapsed": 90, "extra": 4 }, "team": { "id": 42, "name": "Arsenal" }, "player": { "id": 1161, "name": "T. Partey" }, "assist": { "id": null, "name": null }, "type": "Card", "detail": "Yellow Card", "comments": "Time wasting" }
+  ],
+  "lineups": [
+    {
+      "team": { "id": 42, "name": "Arsenal" },
+      "coach": { "id": 7248, "name": "M. Arteta" },
+      "formation": "4-3-3",
+      "startXI": [
+        { "player": { "id": 1460, "name": "B. Saka", "number": 7, "pos": "F", "grid": "4:3" } },
+        { "player": { "id": 1468, "name": "E. Nketiah", "number": 14, "pos": "F", "grid": "4:2" } },
+        { "player": { "id": 1161, "name": "T. Partey", "number": 5, "pos": "M", "grid": "3:2" } }
+      ],
+      "substitutes": [
+        { "player": { "id": 978, "name": "K. Havertz", "number": 29, "pos": "M", "grid": null } },
+        { "player": { "id": 22224, "name": "A. Ramsdale", "number": 1, "pos": "G", "grid": null } }
+      ]
+    },
+    {
+      "team": { "id": 65, "name": "Nottingham Forest" },
+      "coach": { "id": 2407, "name": "S. Cooper" },
+      "formation": "4-2-3-1",
+      "startXI": [
+        { "player": { "id": 19147, "name": "T. Awoniyi", "number": 9, "pos": "F", "grid": "5:1" } },
+        { "player": { "id": 18766, "name": "M. Niakhaté", "number": 19, "pos": "D", "grid": "2:3" } }
+      ],
+      "substitutes": [
+        { "player": { "id": 19163, "name": "A. Elanga", "number": 21, "pos": "F", "grid": null } }
+      ]
+    }
+  ],
+  "statistics": [
+    {
+      "team": { "id": 42, "name": "Arsenal" },
+      "statistics": [
+        { "type": "Shots on Goal", "value": 6 },
+        { "type": "Shots off Goal", "value": 7 },
+        { "type": "Total Shots", "value": 18 },
+        { "type": "Blocked Shots", "value": 5 },
+        { "type": "Shots insidebox", "value": 12 },
+        { "type": "Shots outsidebox", "value": 6 },
+        { "type": "Fouls", "value": 11 },
+        { "type": "Corner Kicks", "value": 8 },
+        { "type": "Offsides", "value": 1 },
+        { "type": "Ball Possession", "value": "78%" },
+        { "type": "Yellow Cards", "value": 1 },
+        { "type": "Red Cards", "value": null },
+        { "type": "Goalkeeper Saves", "value": 0 },
+        { "type": "Total passes", "value": 685 },
+        { "type": "Passes accurate", "value": 617 },
+        { "type": "Passes %", "value": "90%" },
+        { "type": "expected_goals", "value": "2.39" }
+      ]
+    },
+    {
+      "team": { "id": 65, "name": "Nottingham Forest" },
+      "statistics": [
+        { "type": "Shots on Goal", "value": 2 },
+        { "type": "Shots off Goal", "value": 3 },
+        { "type": "Total Shots", "value": 6 },
+        { "type": "Blocked Shots", "value": 1 },
+        { "type": "Shots insidebox", "value": 4 },
+        { "type": "Shots outsidebox", "value": 2 },
+        { "type": "Fouls", "value": 10 },
+        { "type": "Corner Kicks", "value": 0 },
+        { "type": "Offsides", "value": 2 },
+        { "type": "Ball Possession", "value": "22%" },
+        { "type": "Yellow Cards", "value": 2 },
+        { "type": "Red Cards", "value": null },
+        { "type": "Goalkeeper Saves", "value": 4 },
+        { "type": "Total passes", "value": 190 },
+        { "type": "Passes accurate", "value": 128 },
+        { "type": "Passes %", "value": "67%" },
+        { "type": "expected_goals", "value": "0.61" }
+      ]
+    }
+  ],
+  "players": [
+    {
+      "team": { "id": 42, "name": "Arsenal" },
+      "players": [
+        {
+          "player": { "id": 1460, "name": "B. Saka" },
+          "statistics": [{ "games": { "minutes": 90, "number": 7, "position": "F", "rating": "8.4", "captain": false, "substitute": false }, "offsides": null, "shots": { "total": 4, "on": 2 }, "goals": { "total": 1, "conceded": 0, "assists": 1, "saves": null }, "passes": { "total": 41, "key": 3, "accuracy": "34" }, "tackles": { "total": 2, "blocks": null, "interceptions": 1 }, "fouls": { "drawn": 3, "committed": 1 }, "cards": { "yellow": 0, "red": 0 } }]
+        },
+        {
+          "player": { "id": 1468, "name": "E. Nketiah" },
+          "statistics": [{ "games": { "minutes": 70, "number": 14, "position": "F", "rating": "7.8", "captain": false, "substitute": false }, "offsides": 1, "shots": { "total": 3, "on": 2 }, "goals": { "total": 1, "conceded": 0, "assists": null, "saves": null }, "passes": { "total": 18, "key": 1, "accuracy": "14" }, "tackles": { "total": null, "blocks": null, "interceptions": null }, "fouls": { "drawn": 1, "committed": 2 }, "cards": { "yellow": 0, "red": 0 } }]
+        },
+        {
+          "player": { "id": 978, "name": "K. Havertz" },
+          "statistics": [{ "games": { "minutes": 20, "number": 29, "position": "M", "rating": "6.7", "captain": false, "substitute": true }, "offsides": null, "shots": { "total": null, "on": null }, "goals": { "total": null, "conceded": 0, "assists": null, "saves": null }, "passes": { "total": 9, "key": null, "accuracy": "8" }, "tackles": { "total": 1, "blocks": null, "interceptions": null }, "fouls": { "drawn": null, "committed": null }, "cards": { "yellow": 0, "red": 0 } }]
+        },
+        {
+          "player": { "id": 22224, "name": "A. Ramsdale" },
+          "statistics": [{ "games": { "minutes": null, "number": 1, "position": "G", "rating": null, "captain": false, "substitute": true }, "offsides": null, "shots": { "total": null, "on": null }, "goals": { "total": null, "conceded": 0, "assists": null, "saves": null }, "passes": { "total": null, "key": null, "accuracy": null }, "tackles": { "total": null, "blocks": null, "interceptions": null }, "fouls": { "drawn": null, "committed": null }, "cards": { "yellow": 0, "red": 0 } }]
+        }
+      ]
+    },
+    {
+      "team": { "id": 65, "name": "Nottingham Forest" },
+      "players": [
+        {
+          "player": { "id": 19147, "name": "T. Awoniyi" },
+          "statistics": [{ "games": { "minutes": 90, "number": 9, "position": "F", "rating": "7.1", "captain": false, "substitute": false }, "offsides": 2, "shots": { "total": 2, "on": 1 }, "goals": { "total": 1, "conceded": 0, "assists": null, "saves": null }, "passes": { "total": 15, "key": null, "accuracy": "9" }, "tackles": { "total": null, "blocks": null, "interceptions": null }, "fouls": { "drawn": 2, "committed": 1 }, "cards": { "yellow": 0, "red": 0 } }]
+        },
+        {
+          "player": { "id": 18766, "name": "M. Niakhaté" },
+          "statistics": [{ "games": { "minutes": 90, "number": 19, "position": "D", "rating": "6.9", "captain": false, "substitute": false }, "offsides": null, "shots": { "total": null, "on": null }, "goals": { "total": null, "conceded": 0, "assists": null, "saves": null }, "passes": { "total": 22, "key": null, "accuracy": "17" }, "tackles": { "total": 3, "blocks": 1, "interceptions": 2 }, "fouls": { "drawn": null, "committed": 2 }, "cards": { "yellow": 1, "red": 0 } }]
+        }
+      ]
+    }
+  ]
+}

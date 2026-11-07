@@ -1,0 +1,866 @@
+generator client {
+  provider      = "prisma-client-js"
+  // musl targets cover the Alpine containers; rhel covers AWS Lambda, which is what Vercel runs.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// SYNTHETIC = generated dev data (never evidence of real improvement); HISTORICAL = imported real past data; LIVE = current real data.
+enum DataEnvironment {
+  SYNTHETIC
+  HISTORICAL
+  LIVE
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+  POSTPONED
+  CANCELLED
+}
+
+enum PlayerPosition {
+  GOALKEEPER
+  DEFENDER
+  MIDFIELDER
+  FORWARD
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  INJURED
+  SUSPENDED
+  DOUBTFUL
+  UNKNOWN
+}
+
+enum ModelStatus {
+  ACTIVE
+  EXPERIMENTAL
+  RETIRED
+}
+
+enum PredictionTarget {
+  MATCH_RESULT
+  GOALS
+  CORNERS
+  CARDS
+  SHOTS
+  SHOTS_ON_TARGET
+}
+
+enum ConfidenceLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AnalysisRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum LearningEventType {
+  LEARNING_SIGNAL
+  WEIGHT_ADJUSTMENT_PROPOSED
+  VERSION_PROMOTED
+  VERSION_REJECTED
+  ROLLBACK
+}
+
+enum ImportRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum SimulationRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum MatchEventType {
+  GOAL
+  OWN_GOAL
+  PENALTY_GOAL
+  MISSED_PENALTY
+  YELLOW_CARD
+  SECOND_YELLOW
+  RED_CARD
+  SUBSTITUTION
+  VAR
+  OTHER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Competition {
+  id              String          @id @default(cuid())
+  code            String          @unique
+  name            String
+  country         String
+  dataEnvironment DataEnvironment
+  source          String
+  sourceId        String
+  lastUpdated     DateTime
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  seasons      Season[]
+  teams        Team[]
+  matches      Match[]
+  modelMetrics ModelMetric[]
+
+  @@unique([source, sourceId])
+}
+
+model Season {
+  id            String   @id @default(cuid())
+  competitionId String
+  name          String
+  startDate     DateTime
+  endDate       DateTime
+  source        String
+  sourceId      String
+  lastUpdated   DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  competition Competition @relation(fields: [competitionId], references: [id])
+  matches     Match[]
+
+  @@unique([competitionId, name])
+  @@unique([source, sourceId])
+}
+
+model Team {
+  id            String   @id @default(cuid())
+  name          String
+  shortName     String
+  country       String
+  competitionId String
+  source        String
+  sourceId      String
+  lastUpdated   DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  competition      Competition        @relation(fields: [competitionId], references: [id])
+  aliases          TeamAlias[]
+  players          Player[]
+  homeMatches      Match[]            @relation("HomeTeam")
+  awayMatches      Match[]            @relation("AwayTeam")
+  matchStats       MatchTeamStats[]
+  playerMatchStats PlayerMatchStats[]
+  h2hAsTeamA       HeadToHead[]       @relation("H2HTeamA")
+  h2hAsTeamB       HeadToHead[]       @relation("H2HTeamB")
+
+  @@unique([source, sourceId])
+  @@index([competitionId])
+}
+
+// Exact, manually curated name mappings per source. The resolver never guesses beyond these.
+model TeamAlias {
+  id              String   @id @default(cuid())
+  teamId          String
+  source          String
+  alias           String
+  normalizedAlias String
+  // The source's own team ID, bound the first time this curated alias resolves it; afterwards the ID must agree.
+  sourceTeamId    String?
+  createdAt       DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id])
+
+  @@unique([source, normalizedAlias])
+  @@unique([source, sourceTeamId])
+  @@index([teamId])
+}
+
+model Player {
+  id          String         @id @default(cuid())
+  teamId      String
+  name        String
+  position    PlayerPosition
+  source      String
+  sourceId    String
+  lastUpdated DateTime
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  team         Team                 @relation(fields: [teamId], references: [id])
+  matchStats   PlayerMatchStats[]
+  availability PlayerAvailability[]
+
+  @@unique([source, sourceId])
+  @@index([teamId])
+}
+
+// One row per unordered team pair; statistics are always computed from Match rows, never cached here.
+model HeadToHead {
+  id        String   @id @default(cuid())
+  teamAId   String
+  teamBId   String
+  createdAt DateTime @default(now())
+
+  teamA   Team    @relation("H2HTeamA", fields: [teamAId], references: [id])
+  teamB   Team    @relation("H2HTeamB", fields: [teamBId], references: [id])
+  matches Match[]
+
+  @@unique([teamAId, teamBId])
+}
+
+model Match {
+  id                String          @id @default(cuid())
+  competitionId     String
+  seasonId          String
+  homeTeamId        String
+  awayTeamId        String
+  headToHeadId      String
+  dataEnvironment   DataEnvironment
+  source            String
+  sourceId          String
+  lastUpdated       DateTime
+  round             String?
+  matchDate         DateTime
+  // false when the source gives only a date; same-day matches are then treated as simultaneous for cutoffs.
+  kickoffTimeKnown  Boolean         @default(true)
+  sourceMatchDate   String?
+  status            MatchStatus     @default(SCHEDULED)
+  homeScore         Int?
+  awayScore         Int?
+  homeHalfTimeScore Int?
+  awayHalfTimeScore Int?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  competition      Competition          @relation(fields: [competitionId], references: [id])
+  season           Season               @relation(fields: [seasonId], references: [id])
+  homeTeam         Team                 @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam         Team                 @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  headToHead       HeadToHead           @relation(fields: [headToHeadId], references: [id])
+  stats            MatchTeamStats[]
+  playerStats      PlayerMatchStats[]
+  availability     PlayerAvailability[]
+  featureSnapshots FeatureSnapshot[]
+  predictions      Prediction[]
+  analysisRuns     AnalysisRun[]
+  revisions        MatchRevision[]
+  externalLinks    ExternalMatchLink[]
+  events           MatchEvent[]
+  lineups          MatchLineup[]
+  debateRuns       DebateRun[]
+  debatePicks      DebatePick[]
+  oddsSnapshots    OddsSnapshot[]
+
+  @@unique([source, sourceId])
+  @@index([matchDate])
+  @@index([dataEnvironment, matchDate])
+  @@index([homeTeamId, matchDate])
+  @@index([awayTeamId, matchDate])
+  @@index([headToHeadId, matchDate])
+}
+
+// Per-team statistics for a match. NULL means the value was not recorded — never treat it as zero.
+model MatchTeamStats {
+  id            String   @id @default(cuid())
+  matchId       String
+  teamId        String
+  isHome        Boolean
+  goals         Int?
+  possession    Float?
+  shots         Int?
+  shotsOnTarget Int?
+  corners       Int?
+  yellowCards   Int?
+  redCards      Int?
+  fouls           Int?
+  offsides        Int?
+  shotsOffTarget  Int?
+  blockedShots    Int?
+  goalkeeperSaves Int?
+  passes          Int?
+  passesAccurate  Int?
+  passAccuracy    Float?
+  additional      Json?
+  source          String
+  sourceId        String?
+  lastUpdated     DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  match Match @relation(fields: [matchId], references: [id])
+  team  Team  @relation(fields: [teamId], references: [id])
+
+  @@unique([matchId, teamId])
+  @@index([teamId])
+}
+
+// A row means the player took part; any statistic the source did not supply stays NULL.
+model PlayerMatchStats {
+  id            String   @id @default(cuid())
+  playerId      String
+  matchId       String
+  teamId        String
+  started       Boolean
+  minutes       Int
+  goals         Int?
+  assists       Int?
+  shots         Int?
+  shotsOnTarget Int?
+  passes        Int?
+  tackles       Int?
+  interceptions Int?
+  clearances    Int?
+  yellowCards   Int?
+  redCards      Int?
+  rating        Float?
+  fouls         Int?
+  source        String
+  sourceId      String?
+  // Last time Nexora changed this row; LIVE rows count for a cutoff only if created and last changed before it.
+  lastUpdated   DateTime
+  createdAt     DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id])
+  match  Match  @relation(fields: [matchId], references: [id])
+  team   Team   @relation(fields: [teamId], references: [id])
+
+  @@unique([playerId, matchId])
+  @@index([teamId, matchId])
+}
+
+// Append-only history: every report is a row. Analyses use the latest report per player with reportedAt < cutoff.
+model PlayerAvailability {
+  id              String             @id @default(cuid())
+  playerId        String
+  matchId         String
+  status          AvailabilityStatus
+  reason          String?
+  expectedReturn  DateTime?
+  importanceScore Float?
+  reportedAt      DateTime
+  source          String
+  sourceId        String?
+  // The provider's own wording of the status (e.g. "Missing Fixture"), kept verbatim beside Nexora's classification.
+  sourceStatus    String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  player Player @relation(fields: [playerId], references: [id])
+  match  Match  @relation(fields: [matchId], references: [id])
+
+  @@unique([playerId, matchId, reportedAt])
+  @@index([matchId, status])
+  @@index([matchId, reportedAt])
+}
+
+// Immutable record of exactly what was known at the cutoff. latestInputAt must precede asOf (enforced by trigger).
+model FeatureSnapshot {
+  id                String          @id @default(cuid())
+  matchId           String
+  dataEnvironment   DataEnvironment
+  asOf              DateTime
+  latestInputAt     DateTime?
+  featureSetVersion String
+  features          Json
+  dataQuality       Json
+  createdAt         DateTime        @default(now())
+
+  match        Match         @relation(fields: [matchId], references: [id])
+  analysisRuns AnalysisRun[]
+
+  @@index([matchId, asOf])
+}
+
+model ModelVersion {
+  id                    String           @id @default(cuid())
+  version               String           @unique
+  status                ModelStatus
+  // NULL marks the hand-specified baseline, which was not learned from any dataset.
+  dataEnvironment       DataEnvironment?
+  parentVersionId       String?
+  trainingWindowStart   DateTime?
+  trainingWindowEnd     DateTime?
+  evaluationWindowStart DateTime?
+  evaluationWindowEnd   DateTime?
+  matchesEvaluated      Int              @default(0)
+  notes                 String?
+  simulationRunId       String?
+  createdAt             DateTime         @default(now())
+  activatedAt           DateTime?
+  retiredAt             DateTime?
+
+  simulationRun  SimulationRun?  @relation(fields: [simulationRunId], references: [id])
+  parent         ModelVersion?   @relation("ModelLineage", fields: [parentVersionId], references: [id])
+  children       ModelVersion[]  @relation("ModelLineage")
+  featureWeights FeatureWeight[]
+  metrics        ModelMetric[]
+  predictions    Prediction[]
+  analysisRuns   AnalysisRun[]
+  eventsFrom     LearningEvent[] @relation("LearningFrom")
+  eventsTo       LearningEvent[] @relation("LearningTo")
+}
+
+// Immutable once written (enforced by trigger); a changed weight always means a new ModelVersion.
+model FeatureWeight {
+  id             String   @id @default(cuid())
+  modelVersionId String
+  feature        String
+  weight         Float
+  previousWeight Float?
+  reason         String?
+  confidence     Float?
+  createdAt      DateTime @default(now())
+
+  modelVersion ModelVersion @relation(fields: [modelVersionId], references: [id])
+
+  @@unique([modelVersionId, feature])
+}
+
+model ModelMetric {
+  id              String            @id @default(cuid())
+  modelVersionId  String
+  dataEnvironment DataEnvironment
+  target          PredictionTarget?
+  competitionId   String?
+  segment         String?
+  metric          String
+  value           Float
+  sampleSize      Int
+  windowStart     DateTime
+  windowEnd       DateTime
+  simulationRunId String?
+  createdAt       DateTime          @default(now())
+
+  modelVersion  ModelVersion   @relation(fields: [modelVersionId], references: [id])
+  competition   Competition?   @relation(fields: [competitionId], references: [id])
+  simulationRun SimulationRun? @relation(fields: [simulationRunId], references: [id])
+
+  @@index([modelVersionId, dataEnvironment, metric])
+}
+
+model AnalysisRun {
+  id                String            @id @default(cuid())
+  matchId           String
+  modelVersionId    String
+  featureSnapshotId String?
+  dataEnvironment   DataEnvironment
+  status            AnalysisRunStatus
+  asOf              DateTime
+  isSimulation      Boolean           @default(false)
+  simulationRunId   String?
+  output            Json?
+  errorMessage      String?
+  startedAt         DateTime          @default(now())
+  completedAt       DateTime?
+
+  match           Match            @relation(fields: [matchId], references: [id])
+  modelVersion    ModelVersion     @relation(fields: [modelVersionId], references: [id])
+  featureSnapshot FeatureSnapshot? @relation(fields: [featureSnapshotId], references: [id])
+  simulationRun   SimulationRun?   @relation(fields: [simulationRunId], references: [id])
+  predictions     Prediction[]
+  debateRuns      DebateRun[]
+
+  @@index([matchId, startedAt])
+  @@index([simulationRunId])
+}
+
+model SimulationRun {
+  id              String              @id @default(cuid())
+  dataEnvironment DataEnvironment
+  status          SimulationRunStatus
+  config          Json
+  summary         Json?
+  errorMessage    String?
+  startedAt       DateTime            @default(now())
+  completedAt     DateTime?
+
+  analysisRuns  AnalysisRun[]
+  modelVersions ModelVersion[]
+  metrics       ModelMetric[]
+
+  @@index([dataEnvironment, startedAt])
+}
+
+model Prediction {
+  id              String           @id @default(cuid())
+  matchId         String
+  modelVersionId  String
+  analysisRunId   String
+  dataEnvironment DataEnvironment
+  target          PredictionTarget
+  predictedValue  Float
+  predictedLabel  String?
+  probabilities   Json?
+  confidence      ConfidenceLevel
+  confidenceScore Float
+  featuresUsed    Json
+  asOf            DateTime
+  createdAt       DateTime         @default(now())
+
+  match        Match             @relation(fields: [matchId], references: [id])
+  modelVersion ModelVersion      @relation(fields: [modelVersionId], references: [id])
+  analysisRun  AnalysisRun       @relation(fields: [analysisRunId], references: [id])
+  result       PredictionResult?
+
+  @@unique([analysisRunId, target])
+  @@index([modelVersionId, dataEnvironment, target])
+}
+
+model PredictionResult {
+  id            String   @id @default(cuid())
+  predictionId  String   @unique
+  actualValue   Float
+  actualLabel   String?
+  error         Float
+  absoluteError Float
+  squaredError  Float
+  wasCorrect    Boolean?
+  evaluatedAt   DateTime @default(now())
+
+  prediction Prediction @relation(fields: [predictionId], references: [id])
+}
+
+model LearningEvent {
+  id              String            @id @default(cuid())
+  type            LearningEventType
+  dataEnvironment DataEnvironment
+  fromVersionId   String?
+  toVersionId     String?
+  feature         String?
+  previousWeight  Float?
+  proposedWeight  Float?
+  reason          String
+  confidence      Float?
+  evidence        Json?
+  createdAt       DateTime          @default(now())
+
+  fromVersion ModelVersion? @relation("LearningFrom", fields: [fromVersionId], references: [id])
+  toVersion   ModelVersion? @relation("LearningTo", fields: [toVersionId], references: [id])
+
+  @@index([dataEnvironment, createdAt])
+}
+
+// Raw responses from external sources, so historical files are downloaded once and re-imports are reproducible.
+model ExternalSourceCache {
+  id           String   @id @default(cuid())
+  source       String
+  url          String   @unique
+  etag         String?
+  lastModified String?
+  contentHash  String
+  body         String
+  fetchedAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ImportRun {
+  id              String          @id @default(cuid())
+  source          String
+  dataset         String
+  dataEnvironment DataEnvironment
+  status          ImportRunStatus
+  counts          Json?
+  warnings        Json?
+  errorMessage    String?
+  startedAt       DateTime        @default(now())
+  completedAt     DateTime?
+
+  revisions MatchRevision[]
+
+  @@index([source, startedAt])
+}
+
+// Immutable audit of every change an import made to an existing fixture.
+model MatchRevision {
+  id          String   @id @default(cuid())
+  matchId     String
+  importRunId String?
+  source      String
+  changes     Json
+  createdAt   DateTime @default(now())
+
+  match     Match      @relation(fields: [matchId], references: [id])
+  importRun ImportRun? @relation(fields: [importRunId], references: [id])
+
+  @@index([matchId, createdAt])
+}
+
+// Binds another provider's fixture to an existing Nexora match. Enrichment sources never create matches.
+model ExternalMatchLink {
+  id                  String    @id @default(cuid())
+  matchId             String
+  source              String
+  sourceId            String
+  matchedBy           String
+  kickoffDeltaMinutes Int
+  sourceKickoff       DateTime
+  sourceStatus        String
+  sourceHomeScore     Int?
+  sourceAwayScore     Int?
+  // Set when the source disagrees with the canonical result; enrichment is withheld while it persists.
+  conflict            Json?
+  detailsFetchedAt    DateTime?
+  lastUpdated         DateTime
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  match Match @relation(fields: [matchId], references: [id])
+
+  @@unique([source, sourceId])
+  @@unique([source, matchId])
+}
+
+// Idempotent via sourceId: the provider's event ID or a deterministic key (fixture, minute, team, type, detail, players, occurrence).
+model MatchEvent {
+  id                    String         @id @default(cuid())
+  matchId               String
+  teamId                String
+  type                  MatchEventType
+  detail                String?
+  minute                Int
+  extraMinute           Int?
+  playerSourceId        String?
+  playerName            String?
+  relatedPlayerSourceId String?
+  relatedPlayerName     String?
+  comments              String?
+  source                String
+  sourceId              String
+  lastUpdated           DateTime
+  createdAt             DateTime       @default(now())
+
+  match Match @relation(fields: [matchId], references: [id])
+
+  @@unique([source, sourceId])
+  @@index([matchId, minute])
+}
+
+model MatchLineup {
+  id          String   @id @default(cuid())
+  matchId     String
+  teamId      String
+  formation   String?
+  coachName   String?
+  startXI     Json
+  substitutes Json
+  source      String
+  sourceId    String
+  lastUpdated DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  match Match @relation(fields: [matchId], references: [id])
+
+  @@unique([matchId, teamId, source])
+}
+
+// What a provider says it covers for a competition-season. available=false stops Nexora requesting that dataset.
+model ProviderCoverage {
+  id                  String   @id @default(cuid())
+  source              String
+  competitionSourceId String
+  seasonSourceId      String
+  dataset             String
+  available           Boolean
+  reason              String?
+  checkedAt           DateTime
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([source, competitionSourceId, seasonSourceId, dataset])
+}
+
+// Request accounting per provider and UTC day, for budgets such as API-Football's 100 requests/day.
+model ProviderUsage {
+  id            String    @id @default(cuid())
+  source        String
+  day           String
+  requests      Int       @default(0)
+  errors        Int       @default(0)
+  rateLimited   Int       @default(0)
+  cacheHits     Int       @default(0)
+  cacheMisses   Int       @default(0)
+  dailyLimit    Int?
+  remaining     Int?
+  lastRequestAt DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([source, day])
+}
+
+// ---- Debate layer (Step 4). Additive: the four agents read the analysis pipeline and never write to it. ----
+
+enum DebateAgent {
+  SCOUT
+  COPYCAT
+  SKEPTIC
+  BOOKKEEPER
+}
+
+// Markets the debate reasons about. OVER_UNDER_25 and BTTS are derived read-only from the stored
+// Dixon-Coles expectation; they are not Prediction targets and never enter the learning loop.
+enum DebateMarket {
+  MATCH_RESULT
+  OVER_UNDER_25
+  BTTS
+}
+
+enum DebateRecommendation {
+  PICK
+  LEAN
+  NO_PICK
+}
+
+// VETO forces NO_PICK; CONCERN downgrades PICK to LEAN; NOTE is recorded only.
+enum ObjectionSeverity {
+  NOTE
+  CONCERN
+  VETO
+}
+
+enum DebateRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ClaimStance {
+  SUPPORTS
+  OPPOSES
+  NEUTRAL
+}
+
+// Bookmaker prices as captured, with the de-vigged probabilities derived from them. Append-only:
+// a new capture is a new row, so the price at pick time is always recoverable.
+model OddsSnapshot {
+  id         String       @id @default(cuid())
+  matchId    String
+  source     String
+  bookmaker  String
+  market     DebateMarket
+  capturedAt DateTime
+  // Decimal odds exactly as supplied, keyed by outcome (home/draw/away, over/under, yes/no).
+  prices     Json
+  overround  Float
+  // Margin-free probabilities and the method that produced them.
+  implied    Json
+  method     String
+  sourceId   String?
+  createdAt  DateTime     @default(now())
+
+  match Match @relation(fields: [matchId], references: [id])
+
+  @@unique([matchId, source, bookmaker, market, capturedAt])
+  @@index([matchId, market, capturedAt])
+}
+
+// One run of the four-agent debate over one match, at one knowledge cutoff.
+model DebateRun {
+  id              String          @id @default(cuid())
+  matchId         String
+  analysisRunId   String?
+  dataEnvironment DataEnvironment
+  status          DebateRunStatus
+  engineVersion   String
+  asOf            DateTime
+  // Full round-by-round transcript: evidence, baseline, objections, verdict per market.
+  transcript      Json?
+  errorMessage    String?
+  startedAt       DateTime        @default(now())
+  completedAt     DateTime?
+
+  match       Match              @relation(fields: [matchId], references: [id])
+  analysisRun AnalysisRun?       @relation(fields: [analysisRunId], references: [id])
+  claims      DebateAgentClaim[]
+  picks       DebatePick[]
+
+  @@index([matchId, startedAt])
+  @@index([dataEnvironment, startedAt])
+}
+
+// Every assertion an agent made, stored as rows so "which agent was right most often" is a query, not prose.
+model DebateAgentClaim {
+  id          String             @id @default(cuid())
+  debateRunId String
+  agent       DebateAgent
+  round       Int
+  code        String
+  summary     String
+  stance      ClaimStance
+  severity    ObjectionSeverity?
+  targetAgent DebateAgent?
+  market      DebateMarket?
+  evidence    Json
+  // Set when the match is settled: did following this claim's direction prove right?
+  wasCorrect  Boolean?
+  scoredAt    DateTime?
+  createdAt   DateTime           @default(now())
+
+  debateRun DebateRun @relation(fields: [debateRunId], references: [id], onDelete: Cascade)
+
+  @@index([debateRunId, round])
+  @@index([agent, code])
+}
+
+// The debate's final position on one market. Immutable once written, like Prediction.
+model DebatePick {
+  id                   String               @id @default(cuid())
+  debateRunId          String
+  matchId              String
+  market               DebateMarket
+  probabilities        Json
+  marketBaseline       Json?
+  edge                 Float?
+  confidence           ConfidenceLevel
+  recommendation       DebateRecommendation
+  stakePct             Float?
+  stakeReason          String
+  oddsAtPick           Json?
+  oddsSnapshotId       String?
+  reasoning            String
+  unresolvedObjections Json
+  kickoff              DateTime
+  asOf                 DateTime
+  createdAt            DateTime             @default(now())
+
+  debateRun DebateRun         @relation(fields: [debateRunId], references: [id], onDelete: Cascade)
+  match     Match             @relation(fields: [matchId], references: [id])
+  result    DebatePickResult?
+
+  @@unique([debateRunId, market])
+  @@index([matchId, market])
+}
+
+model DebatePickResult {
+  id                  String   @id @default(cuid())
+  debatePickId        String   @unique
+  actualLabel         String
+  probabilityOfActual Float
+  brier               Float
+  logLoss             Float
+  wasCorrect          Boolean
+  // Null unless a price was recorded at pick time; never inferred.
+  profitUnits         Float?
+  settledAt           DateTime @default(now())
+
+  pick DebatePick @relation(fields: [debatePickId], references: [id], onDelete: Cascade)
+}

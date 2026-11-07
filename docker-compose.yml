@@ -1,0 +1,80 @@
+name: nexora
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:?POSTGRES_HOST_PORT is required}:5432"
+    volumes:
+      - nexora_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      HOST: 0.0.0.0
+      LOG_LEVEL: ${LOG_LEVEL:?LOG_LEVEL is required}
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN is required}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      # Optional: without a key API-Football enrichment reports "not configured" and everything else runs normally.
+      API_FOOTBALL_KEY: ${API_FOOTBALL_KEY:-}
+      API_FOOTBALL_DAILY_BUDGET: ${API_FOOTBALL_DAILY_BUDGET:-90}
+      API_FOOTBALL_BATCH_FIXTURES: ${API_FOOTBALL_BATCH_FIXTURES:-true}
+      NEXORA_API_TOKEN: ${NEXORA_API_TOKEN:?NEXORA_API_TOKEN is required}
+    ports:
+      - "127.0.0.1:${BACKEND_HOST_PORT:?BACKEND_HOST_PORT is required}:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Periodically refreshes LIVE (current-season) fixtures and results. Starts after the backend has applied migrations.
+  sync:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: ["node", "dist/data/sync/worker.js"]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:?LOG_LEVEL is required}
+      LIVE_SYNC_INTERVAL_MINUTES: ${LIVE_SYNC_INTERVAL_MINUTES:?LIVE_SYNC_INTERVAL_MINUTES is required}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      API_FOOTBALL_KEY: ${API_FOOTBALL_KEY:-}
+      API_FOOTBALL_DAILY_BUDGET: ${API_FOOTBALL_DAILY_BUDGET:-90}
+      API_FOOTBALL_BATCH_FIXTURES: ${API_FOOTBALL_BATCH_FIXTURES:-true}
+
+  # Static React build served by nginx, which also proxies /api to the backend (same origin, no CORS needed).
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FRONTEND_HOST_PORT:?FRONTEND_HOST_PORT is required}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  nexora_pgdata:
