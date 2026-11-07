@@ -51,25 +51,45 @@ serverless function is re-entered constantly, and an unpooled URL will exhaust P
 
 ### 2. Migrations
 
-Vercel has no boot step, so migrations do not run on deploy. Apply them from a machine that has the
-connection string:
+Vercel has no boot step, so migrations do not run on deploy. Apply them from any machine that can
+reach the database.
+
+**Node is not required.** The `nexora-backend` image already carries `node_modules` and a compiled
+`dist`, so every command below runs through Docker and needs nothing else installed:
 
 ```sh
-cd backend
-DATABASE_URL='postgres://…neon.tech/neondb?sslmode=require' npx prisma migrate deploy
+cd ~/Downloads/nexora
+export NEON_URL='postgres://…neon.tech/neondb?sslmode=require'
+
+docker compose run --rm --no-deps -e DATABASE_URL="$NEON_URL" \
+  --entrypoint sh backend -c 'node_modules/.bin/prisma migrate deploy'
 ```
 
-Re-run this after any migration is added. It is idempotent.
+Re-run after any migration is added. It is idempotent — a second run reports no pending migrations.
+
+If you do have Node on the host, `cd backend && npx prisma migrate deploy` is equivalent.
 
 ### 3. Import the data
 
 The backbone is public files, so this costs nothing and needs no API key:
 
 ```sh
-cd backend && npm ci && npm run build
-DATABASE_URL='…' node dist/data/import/cli.js --competition=en.1 --seasons=2026-27
-# repeat for es.1, de.1, it.1, fr.1 — and any historical season you want backtests over
-DATABASE_URL='…' npm run db:seed    # synthetic development league, optional
+for league in en.1 es.1 de.1 it.1 fr.1; do
+  docker compose run --rm --no-deps -e DATABASE_URL="$NEON_URL" \
+    --entrypoint sh backend -c "node dist/data/import/cli.js --competition=$league --seasons=2026-27"
+done
+```
+
+Add `--seasons=2023-24` and so on for the historical seasons backtests need. The allowlist already
+carries 2023-24 through 2026-27 for all five leagues, so widening coverage is an import rather than
+a code change.
+
+### 3a. Rebuilding after a code change
+
+The image carries the compiled output, so rebuild the image rather than running `npm` on the host:
+
+```sh
+docker compose build backend
 ```
 
 ### 4. Environment variables
@@ -112,6 +132,14 @@ Unchanged, and still the easiest way to develop:
 ```sh
 cp .env.example .env     # set POSTGRES_PASSWORD and NEXORA_API_TOKEN
 docker compose up -d --build
+```
+
+Everything runs in containers; Node on the host is never needed. Tests, the model CLIs and the
+importers all run the same way:
+
+```sh
+docker compose exec -T backend npx vitest run
+docker compose exec -T backend npm run compare:models
 ```
 
 The local stack also sets `NODE_ENV=production`, so it requires the token too. That is intentional:
