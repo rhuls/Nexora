@@ -4,11 +4,11 @@ RUN apk add --no-cache openssl
 
 WORKDIR /app
 
+# The schema must be present before install: package.json's postinstall generates the Prisma
+# client, which the deployment platform also relies on when it runs its own install.
 COPY package.json package-lock.json ./
-RUN npm ci
-
 COPY prisma ./prisma
-RUN npx prisma generate
+RUN npm ci
 
 COPY tsconfig.json tsconfig.build.json vitest.config.ts vitest.integration.config.ts ./
 COPY src ./src

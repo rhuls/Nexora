@@ -1,7 +1,11 @@
 generator client {
   provider      = "prisma-client-js"
-  // musl targets cover the Alpine containers; rhel covers AWS Lambda, which is what Vercel runs.
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x", "rhel-openssl-3.0.x"]
+  // `native` is resolved at generate time, and every environment generates on the machine it runs
+  // on: the Alpine image generates inside itself, so native is the musl engine there. Only the
+  // deployed runtime differs from its builder — Vercel builds on Debian and runs on Amazon Linux —
+  // so rhel is the one target that has to be named. Listing the musl engines as well added 32 MB
+  // to every deployment for nothing.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
