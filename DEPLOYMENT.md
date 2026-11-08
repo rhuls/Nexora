@@ -224,6 +224,34 @@ To check a change without deploying, `vercel build --prod` writes the same artif
 function's layout is `.vercel/output/services/backend/functions/index.func` overlaid with the
 `filePathMap` in its `.vc-config.json`, and that directory runs directly under `node`.
 
+#### Why `src/server.ts` only calls `listen()` off-platform
+
+Vercel does not run the service as a process that owns a port. Its runtime imports the entrypoint
+and calls the exported request listener, and it imports with `http.Server.prototype.listen`
+replaced by a capture:
+
+```js
+http.Server.prototype.listen = function () {
+    server = this;
+    http.Server.prototype.listen = originalListen;
+    if (serverFound) serverFound();
+    return this;            // returns at once, never emits `listening`
+};
+```
+
+`app.listen()` resolves on the `listening` event, which the patched version never emits. Awaiting
+it at module scope therefore never returns, the module never finishes evaluating, and the import
+the runtime is waiting on never settles. Every request then hangs until the client gives up —
+no status code, no error, and nothing in the runtime log, because the function is never entered.
+
+So the file awaits `ready()` on Vercel and `listen()` everywhere else, and default-exports a
+`(req, res)` listener that emits into Fastify's server. The runtime probes for a function export
+before it looks for a captured server, so this dispatch is explicit rather than dependent on the
+capture racing module evaluation.
+
+This is the second of two independent faults that both presented as a dead backend, and the first
+masked the second: while the handler failed to parse it never got far enough to hang.
+
 #### Entrypoint
 
 The service declares `entrypoint: src/server.ts`. Zero-config detection also scans for `app`,
