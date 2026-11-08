@@ -10,3 +10,12 @@ dist/
 coverage/
 *.log
 .DS_Store
+
+# Vercel CLI working files: project linkage and the env snapshots `vercel build`
+# writes. These hold real credentials, so they stay out of the repo entirely.
+.vercel
+
+# Local env files carry real values. The example file documents the variable
+# names with no values, so it is committed and must stay visible to git.
+.env*
+!.env.example

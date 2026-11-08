@@ -174,14 +174,62 @@ The project's own `tsc` run succeeds either way — it is Vercel's extra check t
 symptom is a build that reports `✓ Build complete` and then exits 1. Revisit when
 `@vercel/backends` supports 7.
 
-The backend service declares `entrypoint: src/server.ts`, and `src/server.ts` is deliberately the
-only file in `src/` that Vercel's zero-config scan can select. It looks for `app`, `index` or
-`server`, and the builder was choosing `src/app.ts` — a module that exports `buildApp` and never
-calls `listen()`. A service whose entrypoint never listens starts, binds nothing, and fails every
-request with `FUNCTION_INVOCATION_FAILED`, which says nothing about why.
+#### Why the backend service sets `outputDirectory: "."`
 
-That file is now `src/build-app.ts`, so the explicit `entrypoint` and the automatic scan agree
-rather than relying on the platform to honour the override.
+This looks wrong and is load-bearing. `@vercel/backends` has two ways to produce the function, and
+it picks between them by looking for a server file in an output directory:
+
+```js
+} else for (const outputDirectory of ["dist", "build", "output"]) {
+    if (existsSync(_outputDir)) {
+      const _entrypoint = await findEntrypointInOutputDir(_outputDir);
+      ...
+      files = await glob("**", outputDir);   // ship this tree as-is
+```
+
+Because `npm run build` runs `tsc` into `dist/`, the builder found `dist/server.js`, took the
+as-is path, and shipped **only what was inside `dist`**. It rebases that directory onto the task
+root, so `dist/server.js` was deployed as `/var/task/server.js` while `package.json` and
+`node_modules/` — which live one level up in `backend/` — kept their repository-relative paths.
+Two things broke at once, and the second was hidden behind the first:
+
+- Node decides a `.js` file's module format from the nearest `package.json`. There was none above
+  `/var/task/server.js`, so the file loaded as CommonJS and died on line 1, `import Fastify`.
+- Bare imports resolve by walking up from the importing file. `/var/task/node_modules` did not
+  exist, so even valid ESM would have failed with `Cannot find package 'fastify'`.
+
+The builder's other path bundles the service from source with rolldown, which inlines dependencies
+and emits `.mjs` — no module-format ambiguity and nothing to resolve at runtime. The guard that
+selects it is `resolve(_outputDir) !== resolve(args.workPath)`: naming the service root as the
+output directory fails that check, so the prebuilt tree is ignored and the bundle is built instead.
+`npm run build` still runs and still typechecks; its output is simply not what gets deployed.
+
+Both failure modes surface identically as `FUNCTION_INVOCATION_FAILED`, which names neither. The
+runtime log is the only place the real error appears:
+
+```
+vercel logs <deployment-url>
+```
+
+`scripts/vercel` runs the CLI in a container, because this project's toolchain is Docker and the
+machine need not have Node installed. It reads an API token from `~/.vercel-token` into an
+environment variable rather than taking it as an argument, so the value stays out of shell history,
+`ps` output and logs. Create the token at vercel.com/account/tokens and store it with:
+
+```bash
+read -rs TOKEN && printf %s "$TOKEN" > ~/.vercel-token && chmod 600 ~/.vercel-token && unset TOKEN
+```
+
+To check a change without deploying, `vercel build --prod` writes the same artifact locally; the
+function's layout is `.vercel/output/services/backend/functions/index.func` overlaid with the
+`filePathMap` in its `.vc-config.json`, and that directory runs directly under `node`.
+
+#### Entrypoint
+
+The service declares `entrypoint: src/server.ts`. Zero-config detection also scans for `app`,
+`index` or `server`, so `src/build-app.ts` is named as it is rather than `app.ts`: it exports
+`buildApp` and never calls `listen()`, and a service whose entrypoint never listens binds no port.
+The explicit setting and the scan now agree instead of one having to override the other.
 
 Push the repository and connect it; no further configuration.
 

@@ -4,7 +4,8 @@
     "backend": {
       "root": "backend",
       "framework": "fastify",
-      "entrypoint": "src/server.ts"
+      "entrypoint": "src/server.ts",
+      "outputDirectory": "."
     },
     "frontend": {
       "root": "frontend",
