@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { generateDataset } from '../src/data/synthetic/generator.js';
-import { COMPETITION, INITIAL_FEATURE_WEIGHTS, INITIAL_MODEL_VERSION, SEED_REFERENCE_DATE } from '../src/data/synthetic/reference.js';
+import { COMPETITION, INITIAL_MODEL_VERSION, SEED_REFERENCE_DATE } from '../src/data/synthetic/reference.js';
+import { ensureBaselineModel } from '../src/learning/baseline.js';
 
 const prisma = new PrismaClient();
 const CHUNK = 1000;
@@ -26,9 +27,16 @@ async function resetDatabase(): Promise<void> {
 
 async function main(): Promise<void> {
   const reset = process.argv.includes('--reset');
+
+  // The baseline model is reference data from the brief, not part of the synthetic dataset, and
+  // every analysis needs it. It is created before the guard below so that a database holding real
+  // imported fixtures — which skips the dataset — still ends up with one.
+  await ensureBaselineModel(prisma, SEED_REFERENCE_DATE);
+
   const existingMatches = await prisma.match.count();
   if (existingMatches > 0 && !reset) {
     console.log(`Database already contains ${existingMatches} matches. Re-run with --reset to wipe and reseed.`);
+    console.log(`Baseline model ${INITIAL_MODEL_VERSION.version} is present.`);
     return;
   }
   if (reset) await resetDatabase();
@@ -50,24 +58,8 @@ async function main(): Promise<void> {
   await insertInChunks(data.playerMatchStats, (chunk) => prisma.playerMatchStats.createMany({ data: chunk.map((p) => ({ ...p, ...provenance })) }));
   await insertInChunks(data.availability, (chunk) => prisma.playerAvailability.createMany({ data: chunk.map((a) => ({ ...a, source: SOURCE })) }));
 
-  // Baseline weights come from the brief, not from any dataset, so the version carries no dataEnvironment.
-  await prisma.modelVersion.create({
-    data: {
-      id: INITIAL_MODEL_VERSION.id,
-      version: INITIAL_MODEL_VERSION.version,
-      status: 'ACTIVE',
-      dataEnvironment: null,
-      notes: INITIAL_MODEL_VERSION.notes,
-      activatedAt: SEED_REFERENCE_DATE,
-      featureWeights: {
-        create: Object.entries(INITIAL_FEATURE_WEIGHTS).map(([feature, weight]) => ({
-          feature,
-          weight,
-          reason: 'Initial weight from the Nexora MVP brief.',
-        })),
-      },
-    },
-  });
+  // A --reset wipes the baseline along with everything else, so put it back.
+  await ensureBaselineModel(prisma, SEED_REFERENCE_DATE);
 
   const finished = data.matches.filter((m) => m.status === 'FINISHED').length;
   const unavailable = data.availability.filter((a) => a.status !== 'AVAILABLE').length;

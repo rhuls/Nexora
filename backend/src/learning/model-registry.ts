@@ -1,6 +1,7 @@
 import type { DataEnvironment, ModelVersion, Prisma, PrismaClient } from '@prisma/client';
 import { FEATURE_GROUPS, normalizeWeights, type FeatureGroup, type FeatureWeights } from '../models/types.js';
 import { NotFoundError } from '../utils/errors.js';
+import { ensureBaselineModel } from './baseline.js';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -15,10 +16,12 @@ export interface WeightChange {
 export class ModelRegistry {
   constructor(private readonly db: Db) {}
 
+  // Reading this may write, once per database. The baseline is fixed reference data rather than a
+  // property of the data, so a database without one is simply not finished being set up, and the
+  // alternative is an application that cannot analyse anything until someone runs a script by hand.
   async baseline(): Promise<ModelVersion> {
     const baseline = await this.db.modelVersion.findFirst({ where: { dataEnvironment: null, parentVersionId: null }, orderBy: { createdAt: 'asc' } });
-    if (!baseline) throw new Error('No baseline model version exists (run the seed)');
-    return baseline;
+    return baseline ?? ensureBaselineModel(this.db);
   }
 
   async byVersion(version: string): Promise<ModelVersion> {
