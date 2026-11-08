@@ -174,8 +174,14 @@ The project's own `tsc` run succeeds either way — it is Vercel's extra check t
 symptom is a build that reports `✓ Build complete` and then exits 1. Revisit when
 `@vercel/backends` supports 7.
 
-The backend service also declares `entrypoint: src/server.ts`. Left to itself the builder picks
-`src/app.ts`, which exports `buildApp` and never listens.
+The backend service declares `entrypoint: src/server.ts`, and `src/server.ts` is deliberately the
+only file in `src/` that Vercel's zero-config scan can select. It looks for `app`, `index` or
+`server`, and the builder was choosing `src/app.ts` — a module that exports `buildApp` and never
+calls `listen()`. A service whose entrypoint never listens starts, binds nothing, and fails every
+request with `FUNCTION_INVOCATION_FAILED`, which says nothing about why.
+
+That file is now `src/build-app.ts`, so the explicit `entrypoint` and the automatic scan agree
+rather than relying on the platform to honour the override.
 
 Push the repository and connect it; no further configuration.
 

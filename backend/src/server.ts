@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import { buildApp } from './app.js';
+import { buildApp } from './build-app.js';
 import { loadEnv } from './config/env.js';
 import { createPrismaClient } from './config/prisma.js';
 
