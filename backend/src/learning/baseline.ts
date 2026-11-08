@@ -17,9 +17,29 @@ type Db = PrismaClient | Prisma.TransactionClient;
  * model and performance endpoints.
  *
  * The write is keyed on the fixed id so that callers racing on a cold start converge on one row
- * rather than inserting several.
+ * rather than inserting several. That is not sufficient on its own: Prisma's upsert is a read
+ * followed by a write, not one atomic statement, so two processes starting together both read
+ * nothing and both insert. The loser gets a unique-constraint violation, which here means the row
+ * it wanted now exists — so it reads it back instead of failing the request.
  */
 export async function ensureBaselineModel(db: Db, activatedAt: Date = new Date()): Promise<ModelVersion> {
+  try {
+    return await createBaseline(db, activatedAt);
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const existing = await db.modelVersion.findUnique({ where: { id: INITIAL_MODEL_VERSION.id } });
+    // Inside a transaction Postgres aborts on the violation, so the read above can fail too. There
+    // is nothing to do about that here beyond reporting it: the caller's retry finds the row.
+    if (!existing) throw error;
+    return existing;
+  }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
+}
+
+function createBaseline(db: Db, activatedAt: Date): Promise<ModelVersion> {
   return db.modelVersion.upsert({
     where: { id: INITIAL_MODEL_VERSION.id },
     update: {},

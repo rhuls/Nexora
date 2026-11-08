@@ -7,19 +7,30 @@ import { ModelRegistry } from '../src/learning/model-registry.js';
 // A database with no baseline cannot be reproduced against the real schema, because the triggers
 // that make model lineage immutable refuse to delete one. So the absent case is exercised through
 // the only two calls the registry makes.
-function stubDb(existing: unknown): { db: Prisma.TransactionClient; upserts: unknown[] } {
+function stubDb(
+  existing: unknown,
+  opts: { upsertFails?: unknown; findUniqueReturns?: unknown } = {},
+): { db: Prisma.TransactionClient; upserts: unknown[] } {
   const upserts: unknown[] = [];
   const db = {
     modelVersion: {
       findFirst: async () => existing,
+      findUnique: async () => opts.findUniqueReturns ?? null,
       upsert: async (args: { create: Record<string, unknown> }) => {
         upserts.push(args);
+        if (opts.upsertFails) throw opts.upsertFails;
         return { id: args.create.id, version: args.create.version, dataEnvironment: null, parentVersionId: null };
       },
     },
   } as unknown as Prisma.TransactionClient;
   return { db, upserts };
 }
+
+// What Prisma throws when another process inserted the same id a moment earlier.
+const uniqueViolation = Object.assign(new Error('Unique constraint failed on the fields: (`id`)'), {
+  code: 'P2002',
+  meta: { modelName: 'ModelVersion', target: ['id'] },
+});
 
 describe('baseline model bootstrap', () => {
   it('creates the baseline when none exists, rather than failing the request', async () => {
@@ -67,5 +78,28 @@ describe('baseline model bootstrap', () => {
     const activatedAt = (upserts[0] as { create: { activatedAt: Date } }).create.activatedAt;
     expect(activatedAt.getTime()).toBeGreaterThanOrEqual(before);
     expect(activatedAt.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  // Seen in production: three cold starts bootstrapped at once, two inserted and the third lost.
+  it('returns the winner\u2019s row when another process created the baseline first', async () => {
+    const winner = { id: INITIAL_MODEL_VERSION.id, version: INITIAL_MODEL_VERSION.version, dataEnvironment: null, parentVersionId: null };
+    const { db } = stubDb(null, { upsertFails: uniqueViolation, findUniqueReturns: winner });
+
+    const baseline = await new ModelRegistry(db).baseline();
+
+    expect(baseline).toBe(winner);
+  });
+
+  it('still reports a unique violation it cannot explain, rather than inventing a baseline', async () => {
+    // A transaction that Postgres aborted cannot read the row back; failing loudly is correct.
+    const { db } = stubDb(null, { upsertFails: uniqueViolation, findUniqueReturns: null });
+
+    await expect(new ModelRegistry(db).baseline()).rejects.toThrow('Unique constraint failed');
+  });
+
+  it('does not swallow errors that are not unique violations', async () => {
+    const { db } = stubDb(null, { upsertFails: new Error('connection refused') });
+
+    await expect(ensureBaselineModel(db)).rejects.toThrow('connection refused');
   });
 });
