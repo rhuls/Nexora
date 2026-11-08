@@ -252,6 +252,36 @@ capture racing module evaluation.
 This is the second of two independent faults that both presented as a dead backend, and the first
 masked the second: while the handler failed to parse it never got far enough to hang.
 
+#### Why `content-disposition` is pinned to 2.0.1
+
+`backend/package.json` overrides it:
+
+```json
+"overrides": { "content-disposition": "2.0.1" }
+```
+
+`@fastify/static` — pulled in by `@fastify/swagger-ui` to serve `/docs` — is CommonJS and does
+`const { create } = require('content-disposition')`. From 3.0.0 that package ships ESM only, with
+no `require` condition in its exports. Node has allowed `require()` of ESM since 22.12, so this
+works under Docker and under a plain `node` process; Vercel's runtime loads the handler through
+its own module loader, which does not, and the import throws:
+
+```
+require() of ES Module .../content-disposition/dist/index.js
+from .../@fastify/static/index.js not supported.
+```
+
+2.0.1 is the last CommonJS release and exports the same named API (`create`, `parse`, `format`,
+`decodeExtended`, `encodeExtended`), so the only thing that changes is the module system. The
+newest `@fastify/static` still asks for `^3.0.0`, so upgrading does not resolve it.
+
+Worth knowing when adding dependencies: this breaks only on the platform, and only at runtime.
+Tests, the Docker image and a local `node` run all pass. To find the same trap before deploying,
+look for a CommonJS package that `require()`s one whose `package.json` has `"type": "module"` and
+no `require` condition in `exports`. The only other ESM-only package in the tree is
+`strip-json-comments`, reached through `pino-pretty`, which is a dev dependency and is not traced
+into the deployed function.
+
 #### Entrypoint
 
 The service declares `entrypoint: src/server.ts`. Zero-config detection also scans for `app`,
