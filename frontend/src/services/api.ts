@@ -336,6 +336,40 @@ export interface BlackjackSimulation {
   agrees: boolean;
 }
 
+export interface TrainerSituation {
+  kind: 'hard' | 'soft' | 'pair';
+  value: number;
+  upcard: number;
+  key: string;
+  label: string;
+}
+
+export interface TrainerDeal {
+  player: number[];
+  upcard: number;
+  hole: number;
+  situation: TrainerSituation;
+  drilled: boolean;
+  reshuffled: boolean;
+  dealerNatural: boolean;
+  playerNatural: boolean;
+  legalActions: BlackjackAction[];
+  count: { running: number; true: number };
+}
+
+export interface TrainerHand {
+  cards: number[];
+  stake: number;
+  surrendered: boolean;
+}
+
+export interface TrainerSettlement {
+  dealer: number[];
+  drawn: number[];
+  hands: Array<{ cards: number[]; outcome: 'win' | 'lose' | 'push' | 'surrender'; net: number }>;
+  net: number;
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -411,6 +445,12 @@ export const api = {
   simulations: () => request<{ items: Array<{ id: string; dataEnvironment: DataEnvironment; status: string; startedAt: string; summary: Record<string, unknown> | null }> }>('/simulations'),
   quality: () => request<QualityReport>('/data/quality'),
   freshness: () => request<Freshness>('/data/freshness'),
+  trainerDeal: (body: { rules: BlackjackRules; seen: number[]; weak: Array<{ key: string; evLost: number }>; drillBias: number }) =>
+    request<TrainerDeal>('/blackjack/trainer/deal', { method: 'POST', body: JSON.stringify(body) }),
+  trainerDraw: (body: { rules: BlackjackRules; seen: number[]; count: number }) =>
+    request<{ cards: number[]; count: { running: number; true: number } }>('/blackjack/trainer/draw', { method: 'POST', body: JSON.stringify(body) }),
+  trainerSettle: (body: { rules: BlackjackRules; seen: number[]; dealer: number[]; hands: TrainerHand[] }) =>
+    request<TrainerSettlement>('/blackjack/trainer/settle', { method: 'POST', body: JSON.stringify(body) }),
   blackjackEvaluate: (body: { hand: number[]; upcard: number; seen?: number[]; afterSplit?: boolean; rules: BlackjackRules }) =>
     request<BlackjackDecision>('/blackjack/evaluate', { method: 'POST', body: JSON.stringify(body) }),
   blackjackStrategy: (rules: BlackjackRules) => request<BlackjackChart>(`/blackjack/strategy${qs(rules as unknown as Record<string, string | number>)}`),

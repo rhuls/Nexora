@@ -182,10 +182,13 @@ export interface SimulateOptions {
   rules: Rules;
   seed?: number;
   penetration?: number;
+  // Defaults to the solver's own play. Supplying one measures how a different way of playing
+  // actually performs, on the same shoe and the same seed, rather than by assertion.
+  strategy?: RankedStrategy;
 }
 
-export function simulate({ rounds, rules, seed = 1, penetration = 0.75 }: SimulateOptions): SimulationResult {
-  const strategy = buildRankedStrategy(rules);
+export function simulate({ rounds, rules, seed = 1, penetration = 0.75, strategy: supplied }: SimulateOptions): SimulationResult {
+  const strategy = supplied ?? buildRankedStrategy(rules);
   const rng = new SeededRandom(seed);
   const shoe = new Shoe(rules.decks, penetration, rng);
 

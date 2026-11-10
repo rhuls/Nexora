@@ -102,3 +102,25 @@ export function buildRankedStrategy(rules: Rules): RankedStrategy {
   }
   return out;
 }
+
+/**
+ * The rule "keep drawing until the total reaches `target`, then stop" — no doubling, no splitting,
+ * no surrender. It is what people mean by playing for a number, and it exists here so the cost of
+ * playing that way can be measured against the solver rather than argued about.
+ */
+export function standOnTotalStrategy(target: number): RankedStrategy {
+  const decide = (total: number): Action[] => (total >= target ? ['Stand'] : ['Hit']);
+  const out: RankedStrategy = { hard: {}, soft: {}, pair: {} };
+  for (let upcard = 0; upcard < 10; upcard += 1) {
+    out.hard[upcard] = {};
+    out.soft[upcard] = {};
+    out.pair[upcard] = {};
+    for (let total = 4; total <= 21; total += 1) out.hard[upcard][total] = decide(total);
+    for (let total = 12; total <= 21; total += 1) out.soft[upcard][total] = decide(total);
+    // A pair is played as the hand it already is: a player going for a number does not split.
+    for (let rank = 0; rank < 10; rank += 1) {
+      out.pair[upcard][rank] = rank === 0 ? decide(12) : decide(2 * (rank + 1));
+    }
+  }
+  return out;
+}
