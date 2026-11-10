@@ -67,6 +67,11 @@ export interface EnrichmentRequest {
   types?: readonly EnrichmentType[];
   // Cap on fixtures whose post-match details are requested (small verification runs); the most recent come first.
   maxDetails?: number;
+  // How many squad listings this run may request. Squads are the only affordable source of player
+  // positions for a season already played: per-match lineups cost one request per fixture, which a
+  // metered key cannot cover for a whole season. Absent, only clubs with a match about to kick off
+  // are asked for, which is right for keeping the current season fresh and useless for a backfill.
+  maxSquads?: number;
 }
 
 export interface BackboneSeason {
@@ -568,8 +573,19 @@ export class EnrichmentService {
         (await db.player.findMany({ where: { source, sourceId: { in: prepared.injuries.map((i) => i.player.sourceId) } }, select: { sourceId: true } })).map((p) => p.sourceId),
       );
       for (const d of prepared.details) for (const g of d.players ?? []) for (const p of g.players) if (p.position) known.add(p.playerSourceId);
-      const upcoming = new Map(prepared.matched.filter((m) => m.fixture.kickoff.getTime() >= preparedAt.getTime() && m.fixture.kickoff.getTime() <= preparedAt.getTime() + SQUAD_LOOKAHEAD_MS).map((m) => [m.fixture.sourceId, m]));
-      const teamsNeedingSquads = new Set(prepared.injuries.filter((i) => !known.has(i.player.sourceId) && upcoming.has(i.matchSourceId) && i.team.sourceId).map((i) => i.team.sourceId!));
+      // A position belongs to the player, not to the season, so a club's present squad listing
+      // answers it for a season already played. Nothing time-varying is taken from it: the report's
+      // own reportedAt is what every availability row is filed under.
+      const inScope = new Map(
+        prepared.matched
+          .filter((m) => request.maxSquads !== undefined || (m.fixture.kickoff.getTime() >= preparedAt.getTime() && m.fixture.kickoff.getTime() <= preparedAt.getTime() + SQUAD_LOOKAHEAD_MS))
+          .map((m) => [m.fixture.sourceId, m]),
+      );
+      const wanted = [...new Set(prepared.injuries.filter((i) => !known.has(i.player.sourceId) && inScope.has(i.matchSourceId) && i.team.sourceId).map((i) => i.team.sourceId!))];
+      const teamsNeedingSquads = request.maxSquads === undefined ? wanted : wanted.slice(0, request.maxSquads);
+      if (teamsNeedingSquads.length < wanted.length) {
+        warnings.push({ code: 'SQUADS_CAPPED', message: `${wanted.length - teamsNeedingSquads.length} club(s) still need a squad listing; capped at ${request.maxSquads} for this run.` });
+      }
       for (const teamSourceId of teamsNeedingSquads) {
         const squad = await this.provider.getSquad(teamSourceId);
         if (squad.available) prepared.squadPlayers.push(...squad.data);

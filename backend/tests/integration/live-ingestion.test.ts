@@ -308,7 +308,8 @@ describe('real openfootball data: historical and current seasons stay separated'
   });
 
   it('keeps all three past seasons HISTORICAL and refuses to relabel them as LIVE', async () => {
-    expect(await prisma.match.count({ where: { source: 'openfootball', dataEnvironment: 'HISTORICAL' } })).toBe(1140);
+    // en.1 only: the same source also imports other competitions into this environment.
+    expect(await prisma.match.count({ where: { source: 'openfootball', dataEnvironment: 'HISTORICAL', sourceId: { startsWith: 'en.1/' } } })).toBe(1140);
     const prepared = await importer.prepare(openfootball, { competitionSourceId: 'en.1', seasonSourceId: '2025-26', dataEnvironment: 'LIVE' });
     await inRollback(async (tx) => {
       const counts = await importer.apply(tx, prepared);

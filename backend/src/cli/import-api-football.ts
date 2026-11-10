@@ -5,7 +5,7 @@ import { createApiFootballProvider } from '../config/providers.js';
 import { ENRICHMENT_TYPES, EnrichmentService, type EnrichmentType, enrichableSeasons } from '../data/enrich/enrichment.service.js';
 
 const USAGE = `Usage: npm run import:api-football -- [--league=39] [--season=2026] [--env=LIVE|HISTORICAL]
-       [--from=YYYY-MM-DD --to=YYYY-MM-DD] [--only=stats,events,lineups,players,injuries] [--limit=N] [--show-mapping]
+       [--from=YYYY-MM-DD --to=YYYY-MM-DD] [--only=stats,events,lineups,players,injuries] [--limit=N] [--max-squads=N] [--show-mapping]
        [--dry-run [--offline]]`;
 
 const { values } = parseArgs({
@@ -17,6 +17,7 @@ const { values } = parseArgs({
     to: { type: 'string' },
     only: { type: 'string' },
     limit: { type: 'string' },
+    'max-squads': { type: 'string' },
     'show-mapping': { type: 'boolean', default: false },
     'dry-run': { type: 'boolean', default: false },
     offline: { type: 'boolean', default: false },
@@ -51,13 +52,15 @@ if (invalid && invalid.length > 0) fail(`Unknown --only value(s): ${invalid.join
 if (values.offline && !values['dry-run']) fail('--offline is only meaningful with --dry-run');
 const limit = values.limit === undefined ? undefined : Number(values.limit);
 if (limit !== undefined && (!Number.isInteger(limit) || limit < 0 || limit > 400)) fail('--limit must be an integer between 0 and 400');
+const maxSquads = values['max-squads'] === undefined ? undefined : Number(values['max-squads']);
+if (maxSquads !== undefined && (!Number.isInteger(maxSquads) || maxSquads < 0 || maxSquads > 200)) fail('--max-squads must be an integer between 0 and 200');
 
 const prisma = createPrismaClient();
 try {
   const dryRun = values['dry-run']!;
   const provider = createApiFootballProvider(prisma, { dryRun, network: dryRun ? (values.offline ? 'none' : 'discovery') : 'all' });
   const summary = await new EnrichmentService(prisma, provider).run(
-    { competitionSourceId: values.league!, seasonSourceId: season, dataEnvironment: env as 'LIVE' | 'HISTORICAL' | undefined, from: values.from, to: values.to, types: types as EnrichmentType[] | undefined, maxDetails: limit },
+    { competitionSourceId: values.league!, seasonSourceId: season, dataEnvironment: env as 'LIVE' | 'HISTORICAL' | undefined, from: values.from, to: values.to, types: types as EnrichmentType[] | undefined, maxDetails: limit, maxSquads },
     { dryRun },
   );
 

@@ -41,6 +41,50 @@ describe('curated EPL identities', () => {
   });
 });
 
+describe('curated identities across all five competitions', () => {
+  it('has unique keys, names and short names', () => {
+    for (const field of ['key', 'name'] as const) {
+      const values = CURATED_TEAMS.map((t) => t[field]);
+      expect(new Set(values).size).toBe(values.length);
+    }
+  });
+
+  it('never maps one spelling to two clubs within a source', () => {
+    // The guard that matters for the api-football spellings: two clubs claiming the same provider
+    // name would silently file one club's injuries and results against the other.
+    const seen = new Map<string, string>();
+    for (const team of CURATED_TEAMS) {
+      for (const [source, spellings] of Object.entries(team.aliases)) {
+        for (const spelling of spellings) {
+          const key = `${source}|${normalizeTeamName(spelling)}`;
+          expect(seen.get(key) ?? team.key).toBe(team.key);
+          seen.set(key, team.key);
+        }
+      }
+    }
+  });
+
+  it('gives every competition api-football spellings, not only the Premier League', () => {
+    const byCompetition = new Map<string, number>();
+    for (const team of CURATED_TEAMS) {
+      if (team.aliases['api-football']?.length) {
+        byCompetition.set(team.competitionSourceId, (byCompetition.get(team.competitionSourceId) ?? 0) + 1);
+      }
+    }
+    for (const competition of ['en.1', 'es.1', 'de.1', 'it.1', 'fr.1']) {
+      expect(byCompetition.get(competition) ?? 0).toBeGreaterThan(15);
+    }
+  });
+
+  it('keeps an api-football spelling pointing at a club in the competition it was read from', () => {
+    const prefix: Record<string, string> = { 'en.1': 'eng-', 'es.1': 'esp-', 'de.1': 'ger-', 'it.1': 'ita-', 'fr.1': 'fra-' };
+    for (const team of CURATED_TEAMS) {
+      if (!team.aliases['api-football']?.length) continue;
+      expect(team.key.startsWith(prefix[team.competitionSourceId])).toBe(true);
+    }
+  });
+});
+
 describe('historical conflict detection', () => {
   const stored = {
     homeTeamId: 'a', awayTeamId: 'b', matchDate: new Date('2024-01-01T15:00:00Z'), kickoffTimeKnown: true, sourceMatchDate: '2024-01-01 15:00',

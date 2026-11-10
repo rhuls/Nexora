@@ -74,6 +74,103 @@ const API_FOOTBALL_NAMES: Readonly<Record<string, string>> = {
   'eng-tottenham': 'Tottenham',
   'eng-west-ham': 'West Ham',
   'eng-wolves': 'Wolves',
+  // es.1
+  "esp-alaves": "Alaves",
+  "esp-almeria": "Almeria",
+  "esp-athletic-bilbao": "Athletic Club",
+  "esp-atletico-madrid": "Atletico Madrid",
+  "esp-barcelona": "Barcelona",
+  "esp-cadiz": "Cadiz",
+  "esp-celta-vigo": "Celta Vigo",
+  "esp-elche": "Elche",
+  "esp-espanyol": "Espanyol",
+  "esp-getafe": "Getafe",
+  "esp-girona": "Girona",
+  "esp-granada": "Granada CF",
+  "esp-las-palmas": "Las Palmas",
+  "esp-leganes": "Leganes",
+  "esp-mallorca": "Mallorca",
+  "esp-osasuna": "Osasuna",
+  "esp-rayo-vallecano": "Rayo Vallecano",
+  "esp-real-betis": "Real Betis",
+  "esp-real-madrid": "Real Madrid",
+  "esp-real-sociedad": "Real Sociedad",
+  "esp-real-valladolid": "Valladolid",
+  "esp-sevilla": "Sevilla",
+  "esp-valencia": "Valencia",
+  "esp-villarreal": "Villarreal",
+  // de.1
+  "ger-augsburg": "FC Augsburg",
+  "ger-bayer-leverkusen": "Bayer Leverkusen",
+  "ger-bayern-munich": "Bayern München",
+  "ger-bochum": "VfL Bochum",
+  "ger-darmstadt": "SV Darmstadt 98",
+  "ger-dortmund": "Borussia Dortmund",
+  "ger-eintracht-frankfurt": "Eintracht Frankfurt",
+  "ger-elversberg": "SV Elversberg",
+  "ger-freiburg": "SC Freiburg",
+  "ger-hamburg": "Hamburger SV",
+  "ger-heidenheim": "1. FC Heidenheim",
+  "ger-hoffenheim": "1899 Hoffenheim",
+  "ger-holstein-kiel": "Holstein Kiel",
+  "ger-koln": "1. FC Köln",
+  "ger-m-gladbach": "Borussia Mönchengladbach",
+  "ger-mainz": "FSV Mainz 05",
+  "ger-rb-leipzig": "RB Leipzig",
+  "ger-schalke": "FC Schalke 04",
+  "ger-st-pauli": "FC St. Pauli",
+  "ger-stuttgart": "VfB Stuttgart",
+  "ger-union-berlin": "Union Berlin",
+  "ger-werder-bremen": "Werder Bremen",
+  "ger-wolfsburg": "VfL Wolfsburg",
+  // it.1
+  "ita-ac-milan": "AC Milan",
+  "ita-atalanta": "Atalanta",
+  "ita-bologna": "Bologna",
+  "ita-cagliari": "Cagliari",
+  "ita-como": "Como",
+  "ita-cremonese": "Cremonese",
+  "ita-empoli": "Empoli",
+  "ita-fiorentina": "Fiorentina",
+  "ita-frosinone": "Frosinone",
+  "ita-genoa": "Genoa",
+  "ita-inter-milan": "Inter",
+  "ita-juventus": "Juventus",
+  "ita-lazio": "Lazio",
+  "ita-lecce": "Lecce",
+  "ita-monza": "Monza",
+  "ita-napoli": "Napoli",
+  "ita-parma": "Parma",
+  "ita-roma": "AS Roma",
+  "ita-salernitana": "Salernitana",
+  "ita-sassuolo": "Sassuolo",
+  "ita-torino": "Torino",
+  "ita-udinese": "Udinese",
+  "ita-venezia": "Venezia",
+  "ita-verona": "Hellas Verona",
+  // fr.1
+  "fra-angers": "Angers",
+  "fra-auxerre": "Auxerre",
+  "fra-brest": "Stade Brestois 29",
+  "fra-clermont": "Clermont Foot",
+  "fra-le-havre": "Le Havre",
+  "fra-lens": "Lens",
+  "fra-lille": "Lille",
+  "fra-lorient": "Lorient",
+  "fra-lyon": "Lyon",
+  "fra-marseille": "Marseille",
+  "fra-metz": "Metz",
+  "fra-monaco": "Monaco",
+  "fra-montpellier": "Montpellier",
+  "fra-nantes": "Nantes",
+  "fra-nice": "Nice",
+  "fra-paris-saint-germain": "Paris Saint Germain",
+  "fra-reims": "Reims",
+  "fra-rennes": "Rennes",
+  "fra-saint-etienne": "Saint Etienne",
+  "fra-strasbourg": "Strasbourg",
+  "fra-toulouse": "Toulouse",
+  "fra-troyes": "Estac Troyes",
 };
 
 // La Liga clubs appearing in 2023/24-2026/27.
@@ -194,12 +291,17 @@ const FRA_TEAMS: readonly CuratedTeam[] = [
   { key: 'fra-toulouse', competitionSourceId: 'fr.1', name: "Toulouse", shortName: 'TFC', country: 'France', aliases: { openfootball: ["Toulouse FC"] } },
 ];
 
-export const CURATED_EPL_TEAMS: readonly CuratedTeam[] = EPL_TEAMS.map((t) =>
-  API_FOOTBALL_NAMES[t.key] ? { ...t, aliases: { ...t.aliases, 'api-football': [API_FOOTBALL_NAMES[t.key]!] } } : t,
-);
+const withApiFootball = (teams: readonly CuratedTeam[]): readonly CuratedTeam[] =>
+  teams.map((t) => (API_FOOTBALL_NAMES[t.key] ? { ...t, aliases: { ...t.aliases, 'api-football': [API_FOOTBALL_NAMES[t.key]!] } } : t));
+
+export const CURATED_EPL_TEAMS: readonly CuratedTeam[] = withApiFootball(EPL_TEAMS);
 
 // Every club Nexora can identify, across all five competitions. The openfootball alias is the
 // exact spelling that source prints; `name` and `shortName` are display only and never matched on.
-// api-football spellings are curated for the Premier League only, so enrichment reports clubs in
-// the other leagues as unresolved rather than binding them by guesswork.
-export const CURATED_TEAMS: readonly CuratedTeam[] = [...CURATED_EPL_TEAMS, ...ESP_TEAMS, ...GER_TEAMS, ...ITA_TEAMS, ...FRA_TEAMS];
+//
+// The api-football spellings above were read back from that provider's own team lists for the
+// 2022, 2023 and 2024 seasons of all five competitions and paired with a club only where the
+// pairing was unambiguous. Clubs it lists that Nexora does not curate, and clubs promoted after
+// 2024 whose seasons the key cannot reach, simply have no spelling here: enrichment then reports
+// them unresolved, which is the intended outcome. Nothing is bound by guesswork.
+export const CURATED_TEAMS: readonly CuratedTeam[] = withApiFootball([...EPL_TEAMS, ...ESP_TEAMS, ...GER_TEAMS, ...ITA_TEAMS, ...FRA_TEAMS]);

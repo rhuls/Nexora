@@ -32,7 +32,12 @@ const prepare = (season: string): Promise<PreparedImport> =>
 let epl: Match[] = [];
 
 beforeAll(async () => {
-  epl = await prisma.match.findMany({ where: { source: 'openfootball', dataEnvironment: 'HISTORICAL' }, orderBy: [{ matchDate: 'asc' }, { id: 'asc' }] });
+  // Scoped to en.1: other competitions import from the same source into the same environment, and
+  // this file is about what the Premier League import produced.
+  epl = await prisma.match.findMany({
+    where: { source: 'openfootball', dataEnvironment: 'HISTORICAL', sourceId: { startsWith: 'en.1/' } },
+    orderBy: [{ matchDate: 'asc' }, { id: 'asc' }],
+  });
   if (epl.length === 0) throw new Error('Integration tests need the EPL import (npm run import:data)');
 });
 
@@ -47,11 +52,11 @@ describe('EPL import contents', () => {
     expect(epl.every((m) => m.status === 'FINISHED' && m.dataEnvironment === 'HISTORICAL')).toBe(true);
     expect(epl.every((m) => m.homeScore !== null && m.awayScore !== null && m.round !== null && m.sourceMatchDate !== null && m.kickoffTimeKnown)).toBe(true);
     const seasons = await prisma.season.findMany({
-      where: { source: 'openfootball', matches: { some: { dataEnvironment: 'HISTORICAL' } } },
+      where: { source: 'openfootball', sourceId: { startsWith: 'en.1/' }, matches: { some: { dataEnvironment: 'HISTORICAL' } } },
       orderBy: { name: 'asc' },
     });
     expect(seasons.map((s) => s.name)).toEqual(['2023/24', '2024/25', '2025/26']);
-    expect(await prisma.match.count({ where: { season: { source: 'openfootball', name: '2026/27' }, dataEnvironment: 'HISTORICAL' } })).toBe(0);
+    expect(await prisma.match.count({ where: { season: { source: 'openfootball', sourceId: 'en.1/2026-27' }, dataEnvironment: 'HISTORICAL' } })).toBe(0);
   });
 
   it('leaves half-time unavailable exactly where the source omitted it', async () => {
