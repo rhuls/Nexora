@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BlackjackTrainer } from '../components/BlackjackTrainer';
+import { ModelIntelligence } from '../components/ModelIntelligence';
 import { Card, ErrorBox, Loading, Unavailable, pct } from '../components/ui';
 import { useApi } from '../hooks/useApi';
 import { api, type BlackjackAction, type BlackjackDecision, type BlackjackRules, type BlackjackSimulation } from '../services/api';
@@ -164,6 +165,8 @@ export function BlackjackPage() {
       </div>
 
       <BlackjackTrainer rules={rules} />
+
+      <ModelIntelligence rules={rules} />
 
       <Card title="Rules" subtitle="Changing a rule re-derives the chart and the edge rather than invalidating them">
         <div className="flex flex-wrap items-end gap-4">

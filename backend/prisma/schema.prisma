@@ -868,3 +868,92 @@ model DebatePickResult {
 
   pick DebatePick @relation(fields: [debatePickId], references: [id], onDelete: Cascade)
 }
+
+// ---- Blackjack: what the model said beforehand, kept so it can be held to it ----
+
+enum BlackjackObservationSource {
+  // A hand the person actually played and reported.
+  PLAYED
+  // A hand dealt by the simulator. Honestly generated, but from the model's own assumptions, so it
+  // tests whether the arithmetic is right and not whether the assumptions match a real table.
+  SIMULATED
+}
+
+enum BlackjackModelKind {
+  // Exact enumeration over the cards remaining. The baseline, never modified.
+  SOLVER
+  // The solver with a fitted correction applied. Only ever created with evidence behind it.
+  CALIBRATED
+}
+
+model BlackjackModelVersion {
+  id            String             @id @default(cuid())
+  version       String             @unique
+  kind          BlackjackModelKind
+  parentVersion String?
+  rules         Json
+  // Present only on a CALIBRATED version: the fitted factors and the prior that restrained them.
+  priorStrength Float?
+  adjustments   Json?
+  notes         String
+  createdAt     DateTime           @default(now())
+  activatedAt   DateTime?
+  retiredAt     DateTime?
+
+  observations BlackjackObservation[]
+  evaluations  BlackjackEvaluationRun[]
+}
+
+model BlackjackObservation {
+  id             String                     @id @default(cuid())
+  modelVersionId String
+  source         BlackjackObservationSource
+  // When the forecast was made. Distinct from recordedAt, which is when it reached the database.
+  predictedAt    DateTime
+  recordedAt     DateTime                   @default(now())
+
+  rules        Json
+  playerCards  Int[]
+  dealerUpcard Int
+  // The shoe as the forecast saw it, so any figure here can be recomputed from scratch.
+  remaining    Int[]
+  unseenCards  Int
+
+  dealerDistribution Float[]
+  actionEvs          Json
+  bestAction         String
+  bestActionEv       Float
+
+  dealerFinalCards        Int[]
+  dealerOutcome           Int
+  playerFinalCards        Int[]
+  playerTotal             Int
+  settled                 String
+  net                     Float
+  cardsDrawnAfterForecast Int
+
+  modelVersion BlackjackModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
+
+  @@index([modelVersionId, predictedAt])
+  @@index([source])
+  @@index([dealerUpcard])
+}
+
+model BlackjackEvaluationRun {
+  id               String   @id @default(cuid())
+  modelVersionId   String
+  createdAt        DateTime @default(now())
+  observationCount Int
+  trainingCount    Int
+  validationCount  Int
+  source           String
+  // The whole evaluation as computed: metrics, every segment, and the recalibration trial.
+  summary          Json
+  // Whether a fitted correction beat the baseline on observations it had never seen.
+  recalibrationJustified Boolean
+  notes            String
+
+  modelVersion BlackjackModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
+
+  @@index([modelVersionId, createdAt])
+}

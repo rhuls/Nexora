@@ -89,7 +89,7 @@ export async function buildApp(env: Env, prisma: PrismaClient): Promise<FastifyI
       // The debate layer reads the analysis pipeline and writes only its own tables.
       await api.register(debateRoutes(prisma, createOddsProvider(prisma)?.isConfigured() ?? false));
       // Self-contained solver: no database, no football data, no shared state.
-      await api.register(blackjackRoutes());
+      await api.register(blackjackRoutes(prisma));
       await api.register(syncRoutes(prisma));
     },
     { prefix: '/api' },

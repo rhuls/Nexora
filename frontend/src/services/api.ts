@@ -370,6 +370,66 @@ export interface TrainerSettlement {
   net: number;
 }
 
+export interface CalibrationBin {
+  lower: number;
+  upper: number;
+  n: number;
+  meanForecast: number;
+  observedRate: number;
+  interval: { low: number; high: number };
+  outsideInterval: boolean;
+}
+
+export interface SegmentEvaluation {
+  segment: { dimension: string; key: string; label: string };
+  n: number;
+  brier: number;
+  logLoss: number;
+  calibration: { bins: CalibrationBin[]; n: number; ece: number; maxGap: number; bias: number };
+  goodnessOfFit: { statistic: number; df: number; pValue: number; lowExpectedCategories: number; usable: boolean };
+  categories: Array<{
+    category: string;
+    forecastRate: number;
+    observedRate: number;
+    test: { observed: number; expected: number; n: number; difference: number; z: number; pValue: number; interval: { low: number; high: number }; significant: boolean };
+  }>;
+  adjustedPValue: number;
+  flagged: boolean;
+}
+
+export interface EvaluationReport {
+  modelVersion: string;
+  source: string;
+  observations: number;
+  training: number;
+  validation: number;
+  evaluation: {
+    n: number;
+    overall: SegmentEvaluation;
+    segments: SegmentEvaluation[];
+    weaknesses: SegmentEvaluation[];
+    insufficient: Array<{ segment: { dimension: string; key: string; label: string }; n: number }>;
+  };
+  windows: Array<{ from: number; to: number; n: number; brier: number; logLoss: number; ece: number; bias: number }>;
+  recalibration: {
+    priorStrength: number;
+    adjustments: Array<{ dimension: string; key: string; factors: number[]; n: number }>;
+    comparison: {
+      n: number; baselineLogLoss: number; candidateLogLoss: number; baselineBrier: number; candidateBrier: number;
+      meanImprovement: number; interval: { low: number; high: number }; z: number; pValue: number; justified: boolean;
+    };
+    verdict: string;
+  };
+  generatedAt: string;
+}
+
+export interface ModelIntelligence {
+  rules: BlackjackRules;
+  counts: { played: number; simulated: number };
+  history: Array<{ id: string; createdAt: string; observationCount: number; recalibrationJustified: boolean; notes: string; source: string }>;
+  latest: EvaluationReport | null;
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -447,6 +507,12 @@ export const api = {
   freshness: () => request<Freshness>('/data/freshness'),
   trainerDeal: (body: { rules: BlackjackRules; seen: number[]; weak: Array<{ key: string; evLost: number }>; drillBias: number }) =>
     request<TrainerDeal>('/blackjack/trainer/deal', { method: 'POST', body: JSON.stringify(body) }),
+  recordObservation: (body: {
+    rules: BlackjackRules; seen: number[]; playerCards: number[]; dealerUpcard: number;
+    dealerFinalCards: number[]; playerFinalCards: number[]; stake: number; surrendered: boolean;
+  }) => request<{ recorded: number; dealerOutcome: number; dealerDistribution: number[] }>('/blackjack/observations', { method: 'POST', body: JSON.stringify(body) }),
+  modelIntelligence: (rules: BlackjackRules) =>
+    request<ModelIntelligence>(`/blackjack/model/intelligence${qs(rules as unknown as Record<string, string | number>)}`),
   trainerDraw: (body: { rules: BlackjackRules; seen: number[]; count: number }) =>
     request<{ cards: number[]; count: { running: number; true: number } }>('/blackjack/trainer/draw', { method: 'POST', body: JSON.stringify(body) }),
   trainerSettle: (body: { rules: BlackjackRules; seen: number[]; dealer: number[]; hands: TrainerHand[] }) =>

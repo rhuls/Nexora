@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { BlackjackService } from '../services/blackjack.service.js';
+import { BlackjackIntelligenceService, ObservationRejected } from '../services/blackjack-intelligence.service.js';
 import { DEFAULT_RULES, HandSchema, RulesSchema } from '../blackjack/types.js';
 import { chooseTarget, deal, dealerPlay, isLive, isNatural, legalActions, remainingComposition, runningCount, settleHand, trueCount } from '../blackjack/trainer.js';
 import { ErrorResponseSchema } from '../types/api.js';
@@ -29,10 +30,11 @@ function drawOne(comp: number[]): number {
   throw new Error('The shoe is empty');
 }
 
-export function blackjackRoutes() {
+export function blackjackRoutes(prisma?: import('@prisma/client').PrismaClient) {
   return async (app: FastifyInstance): Promise<void> => {
     const r = app.withTypeProvider<ZodTypeProvider>();
     const service = new BlackjackService();
+    const intelligence = prisma ? new BlackjackIntelligenceService(prisma) : null;
 
     r.post('/blackjack/evaluate', {
       schema: {
@@ -165,6 +167,117 @@ export function blackjackRoutes() {
           hands: settled,
           net: settled.reduce((sum, h) => sum + h.net, 0),
         };
+      },
+    });
+
+    // ---- Model intelligence ----
+    // Observations are append-only and the solver is never edited. A correction, if one is ever
+    // warranted, is stored as a separate version and has to beat the baseline on held-out hands.
+
+    r.post('/blackjack/observations', {
+      preHandler: app.auth.require,
+      config: { rateLimit: { max: 240, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['blackjack'],
+        summary: 'Record a hand that was actually played, with the forecast recomputed here',
+        description: 'Send what was seen, not what the model said. The forecast is recomputed from these inputs so that every stored row can be reproduced from the row itself.',
+        body: z.object({
+          rules: RulesSchema.default(DEFAULT_RULES),
+          seen: z.array(z.number().int().min(0).max(9)).max(416).default([]),
+          playerCards: HandSchema,
+          dealerUpcard: Upcard,
+          dealerFinalCards: z.array(z.number().int().min(0).max(9)).min(2).max(12),
+          playerFinalCards: HandSchema,
+          stake: z.number().min(0).max(4).default(1),
+          surrendered: z.boolean().default(false),
+          predictedAt: z.coerce.date().optional(),
+        }),
+        response: { 200: Json, 400: ErrorResponseSchema, 401: ErrorResponseSchema, 503: ErrorResponseSchema },
+      },
+      handler: async (req, reply) => {
+        if (!intelligence) return reply.status(503).send({ error: 'Unavailable', message: 'No database is configured for this deployment.' });
+        let result;
+        try {
+          result = await intelligence.recordPlayed({ ...req.body, predictedAt: req.body.predictedAt ?? new Date() });
+        } catch (error) {
+          if (error instanceof ObservationRejected) return reply.status(400).send({ error: 'ObservationRejected', message: error.message });
+          throw error;
+        }
+        const { recorded, observation } = result;
+        return {
+          recorded,
+          dealerOutcome: observation.dealerOutcome,
+          dealerDistribution: observation.dealerDistribution,
+          settled: observation.settled,
+          net: observation.net,
+        };
+      },
+    });
+
+    r.post('/blackjack/observations/simulate', {
+      preHandler: app.auth.require,
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['blackjack'],
+        summary: 'Deal hands and record what the model forecast before each one resolved',
+        description: 'Honestly dealt, but from the model\u2019s own assumptions: this tests whether the arithmetic is right, not whether the assumptions match a real table. Recorded as SIMULATED so the two are never confused.',
+        body: z.object({
+          rounds: z.coerce.number().int().min(100).max(200_000).default(20_000),
+          seed: z.coerce.number().int().min(0).max(2 ** 31).optional(),
+          policy: z.enum(['stand', 'solver']).default('stand'),
+          rules: RulesSchema.default(DEFAULT_RULES),
+        }),
+        response: { 200: Json, 401: ErrorResponseSchema, 503: ErrorResponseSchema },
+      },
+      handler: async (req, reply) => {
+        if (!intelligence) return reply.status(503).send({ error: 'Unavailable', message: 'No database is configured for this deployment.' });
+        return intelligence.simulate(req.body);
+      },
+    });
+
+    r.post('/blackjack/model/evaluate', {
+      preHandler: app.auth.require,
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['blackjack'],
+        summary: 'Score the record, look for weaknesses, and put a fitted correction on trial',
+        body: z.object({
+          rules: RulesSchema.default(DEFAULT_RULES),
+          source: z.enum(['ALL', 'PLAYED', 'SIMULATED']).default('ALL'),
+          limit: z.coerce.number().int().min(100).max(400_000).default(200_000),
+        }),
+        response: { 200: Json, 401: ErrorResponseSchema, 503: ErrorResponseSchema },
+      },
+      handler: async (req, reply) => {
+        if (!intelligence) return reply.status(503).send({ error: 'Unavailable', message: 'No database is configured for this deployment.' });
+        return intelligence.runEvaluation(req.body);
+      },
+    });
+
+    r.get('/blackjack/model/intelligence', {
+      schema: {
+        tags: ['blackjack'],
+        summary: 'The latest evaluation, the record it was computed from, and every earlier verdict',
+        querystring: RulesSchema,
+        response: { 200: Json, 503: ErrorResponseSchema },
+      },
+      handler: async (req, reply) => {
+        if (!intelligence) return reply.status(503).send({ error: 'Unavailable', message: 'No database is configured for this deployment.' });
+        try {
+          const [counts, history] = await Promise.all([intelligence.counts(req.query), intelligence.history(req.query)]);
+          const latest = history[0] ? await prisma!.blackjackEvaluationRun.findUnique({ where: { id: history[0].id }, select: { summary: true } }) : null;
+          return { rules: req.query, counts, history, latest: latest?.summary ?? null };
+        } catch (error) {
+          // A deployment whose database has not had the migration applied yet should say so rather
+          // than return an error with nothing actionable in it.
+          if (typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2021') {
+            return reply.status(503).send({
+              error: 'MigrationPending',
+              message: 'The blackjack observation tables do not exist on this database yet. Run `prisma migrate deploy` against it.',
+            });
+          }
+          throw error;
+        }
       },
     });
 

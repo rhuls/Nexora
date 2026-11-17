@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  api, type BlackjackAction, type BlackjackDecision, type BlackjackRules,
+  ApiError, api, type BlackjackAction, type BlackjackDecision, type BlackjackRules,
   type TrainerDeal, type TrainerSettlement,
 } from '../services/api';
 import { Card, ErrorBox } from './ui';
@@ -91,6 +91,9 @@ export function BlackjackTrainer({ rules }: { rules: BlackjackRules }) {
   const [reported, setReported] = useState<Reported | null>(null);
   const [handExpectedEv, setHandExpectedEv] = useState(0);
   const [handSituation, setHandSituation] = useState<{ key: string; label: string } | null>(null);
+  // The shoe as it stood before this hand's own cards came out, which is what an observation needs.
+  const [seenBeforeHand, setSeenBeforeHand] = useState<number[]>([]);
+  const [recordState, setRecordState] = useState<'idle' | 'saved' | 'unauthorised' | 'skipped' | 'failed'>('idle');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [leaks, setLeaks] = useState<Record<string, Leak>>(() => load<Record<string, Leak>>(LEAK_KEY, {}));
@@ -126,7 +129,9 @@ export function BlackjackTrainer({ rules }: { rules: BlackjackRules }) {
     setReported(null);
     setHandSituation(null);
     setHandExpectedEv(0);
+    setRecordState('idle');
     try {
+      setSeenBeforeHand(seen);
       const d = await api.trainerDeal({ rules, seen, weak, drillBias: 0.5 });
       const nextSeen = d.reshuffled ? [...d.player, d.upcard] : [...seen, ...d.player, d.upcard];
       const opening: PlayHand[] = [{ cards: d.player, stake: 1, surrendered: false, done: d.legalActions.length === 0, fromSplit: false }];
@@ -283,6 +288,28 @@ export function BlackjackTrainer({ rules }: { rules: BlackjackRules }) {
       const result = await settle(pending.hands, deal, pending.seen);
       const actual = result.net > 0 ? 'win' : result.net < 0 ? 'lose' : 'push';
       if (actual !== outcome) setTally((t) => ({ ...t, disagreements: t.disagreements + 1 }));
+
+      // The hand becomes an observation: what the model forecast, and what the cards then did. A
+      // split makes two hands against one dealer and does not fit that shape, so it is not recorded
+      // rather than being flattened into something the evaluation would read wrongly.
+      if (pending.hands.length > 1) setRecordState('skipped');
+      else {
+        try {
+          await api.recordObservation({
+            rules,
+            seen: seenBeforeHand,
+            playerCards: deal.player,
+            dealerUpcard: deal.upcard,
+            dealerFinalCards: result.dealer,
+            playerFinalCards: pending.hands[0].cards,
+            stake: pending.hands[0].stake,
+            surrendered: pending.hands[0].surrendered,
+          });
+          setRecordState('saved');
+        } catch (recordError) {
+          setRecordState(recordError instanceof ApiError && recordError.status === 401 ? 'unauthorised' : 'failed');
+        }
+      }
     } catch (e) {
       // Reporting still counts even if the reveal fails; the player's account is the record.
       setError(e instanceof Error ? e.message : String(e));
@@ -402,6 +429,15 @@ export function BlackjackTrainer({ rules }: { rules: BlackjackRules }) {
             )}
 
             {settlement && <Result settlement={settlement} reported={reported} />}
+
+            {recordState !== 'idle' && (
+              <p className="text-[11px] text-slate-500">
+                {recordState === 'saved' && 'Recorded as an observation: the forecast that preceded this hand, and what the cards did.'}
+                {recordState === 'skipped' && 'Split hands are not recorded as observations: two hands against one dealer do not fit the shape the evaluation reads.'}
+                {recordState === 'unauthorised' && 'Not recorded — adding to the observation record needs the deployment token. The session above still counts it.'}
+                {recordState === 'failed' && 'Not recorded — the observation could not be stored. The session above still counts it.'}
+              </p>
+            )}
 
             <button
               type="button"
