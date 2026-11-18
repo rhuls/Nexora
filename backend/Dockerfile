@@ -13,6 +13,9 @@ RUN npm ci
 COPY tsconfig.json tsconfig.build.json vitest.config.ts vitest.integration.config.ts ./
 COPY src ./src
 COPY tests ./tests
+# The build runs the migration step, which skips itself without a DATABASE_URL — as here, where the
+# image belongs to no environment. This container migrates on startup instead (see CMD).
+COPY scripts ./scripts
 RUN npm run build
 
 # Vitest writes a temp config bundle next to the config and a cache in node_modules/.vite; everything else stays root-owned.
