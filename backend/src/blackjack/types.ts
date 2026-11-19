@@ -37,7 +37,9 @@ export const DEFAULT_RULES: Rules = {
 
 // A hand is a list of ranks. Its total is carried as (total, soft) where soft means one ace
 // is currently counted as 11.
-export const HandSchema = z.array(z.number().int().min(0).max(9)).min(1).max(12);
+// A hand of small cards runs long: eleven aces and five twos is twenty-one in sixteen cards, and
+// a shoe holds enough of both. The cap is only there to bound the request, not to bound play.
+export const HandSchema = z.array(z.number().int().min(0).max(9)).min(1).max(24);
 
 export interface ActionValue {
   action: Action;

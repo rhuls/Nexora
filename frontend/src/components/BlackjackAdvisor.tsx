@@ -241,9 +241,7 @@ export function BlackjackAdvisor({
                 <button type="button" onClick={() => setUpcard(null)} className="text-[11px] text-slate-500 hover:text-rose-300">change</button>
               )}
             </div>
-            {upcard === null
-              ? <div className="mt-1.5"><RankPicker label="" onPick={setUpcard} remaining={remaining} /></div>
-              : <div className="mt-1.5"><Chips cards={[upcard]} /></div>}
+            <div className="mt-1.5">{upcard === null ? <span className="text-xs text-slate-600">not picked yet</span> : <Chips cards={[upcard]} />}</div>
           </div>
 
           <div>
@@ -254,8 +252,28 @@ export function BlackjackAdvisor({
               </p>
             </div>
             <div className="mt-1.5"><Chips cards={player} onRemove={finishing ? undefined : (i) => setPlayer((p) => p.filter((_, j) => j !== i))} /></div>
-            {!finishing && <div className="mt-2"><RankPicker label={player.length < 2 ? 'Pick your two cards' : 'Add a card you drew'} onPick={(r) => setPlayer((p) => [...p, r])} remaining={remaining} /></div>}
           </div>
+
+          {/* One picker, addressed to whatever is missing. Two identical rows of ranks on screen at
+              once made it easy to give the dealer a card meant for your own hand. */}
+          {!finishing && (
+            <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-3">
+              <RankPicker
+                label={
+                  upcard === null ? "1. Which card is the dealer showing?"
+                    : player.length === 0 ? '2. Your first card'
+                    : player.length === 1 ? '3. Your second card'
+                    : 'Drew a card? Add it'
+                }
+                onPick={(r) => {
+                  if (upcard === null) { setUpcard(r); return; }
+                  if (player.length >= 2) remember(doubled ? 'Double' : 'Hit');
+                  setPlayer((prev) => [...prev, r]);
+                }}
+                remaining={remaining}
+              />
+            </div>
+          )}
 
           {error && <ErrorBox message={error} />}
 
@@ -263,16 +281,16 @@ export function BlackjackAdvisor({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={!ready || busy}
-                onClick={() => { remember('Double'); setDoubled(true); }}
+                disabled={!ready || busy || doubled || player.length !== 2}
+                onClick={() => setDoubled(true)}
                 className="rounded-md bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-40"
               >
-                I doubled
+                {doubled ? 'Doubling — add the card' : 'I doubled'}
               </button>
               <button
                 type="button"
                 disabled={!ready || busy}
-                onClick={() => { remember('Stand'); setFinishing(true); }}
+                onClick={() => { if (!doubled) remember('Stand'); setFinishing(true); }}
                 className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-40"
               >
                 Hand finished →

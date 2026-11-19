@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { standOutcomes } from '../src/blackjack/solver.js';
-import { addCard, dealerDistribution, evaluate, handTotal, probabilitiesOf, standEV } from '../src/blackjack/solver.js';
+import { addCard, dealerDistribution, evaluate, handTotal, probabilitiesOf, standEV, standOutcomes } from '../src/blackjack/solver.js';
 import { buildChart } from '../src/blackjack/strategy.js';
 import { edge, playerEV } from '../src/blackjack/edge.js';
 import { simulate } from '../src/blackjack/simulator.js';
-import { DEFAULT_RULES, RulesSchema, countCards, freshShoe, type Rules } from '../src/blackjack/types.js';
+import { DEFAULT_RULES, HandSchema, RulesSchema, countCards, freshShoe, type Rules } from '../src/blackjack/types.js';
 
 const RULES: Rules = { ...DEFAULT_RULES };
 const C = { A: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, T: 9 } as const;
@@ -325,5 +324,34 @@ describe('how a stand ends', () => {
     const noTwentyOne = [0.2, 0.2, 0.2, 0.2, 0, 0.2];
     expect(standOutcomes(21, noTwentyOne).push).toBe(0);
     expect(standOutcomes(21, noTwentyOne).win).toBeCloseTo(1, 12);
+  });
+});
+
+describe('hands made of small cards', () => {
+  it('solves a long hand rather than refusing it', () => {
+    // Eleven aces and five twos is twenty-one in sixteen cards, and a six-deck shoe holds both.
+    const long = [...Array(11).fill(0), ...Array(5).fill(1)];
+    expect(HandSchema.safeParse(long).success).toBe(true);
+    const [total, soft] = handTotal(long);
+    expect(total).toBe(21);
+    expect(soft).toBe(false);
+  });
+
+  it('keeps advising as a small hand grows', () => {
+    const comp = freshShoe(DEFAULT_RULES.decks);
+    // 5,2 then a 2 then another: 7, 9, 11 — all still worth drawing to against a six.
+    for (const [hand, expected] of [[[4, 1], 7], [[4, 1, 1], 9], [[4, 1, 1, 1], 11]] as const) {
+      const d = evaluate(hand, 5, comp, DEFAULT_RULES, {});
+      expect(d.total).toBe(expected);
+      expect(d.best.action).toBe('Hit');
+      expect(d.actions.length).toBeGreaterThan(1);
+    }
+  });
+
+  it('counts an ace down once the hand would bust', () => {
+    expect(handTotal([0, 0])[0]).toBe(12);
+    expect(handTotal([0, 9])[0]).toBe(21);
+    expect(handTotal([0, 9, 9])[0]).toBe(21);
+    expect(handTotal([0, 0, 8])[0]).toBe(21);
   });
 });
