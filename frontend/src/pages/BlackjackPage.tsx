@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BlackjackTable, type CompletedHand } from '../components/BlackjackTable';
+import { BlackjackAdvisor, type PlayedHand } from '../components/BlackjackAdvisor';
 import { Disclosure } from '../components/Disclosure';
 import { HandHistory } from '../components/HandHistory';
 import { LiveModelPanel } from '../components/LiveModelPanel';
@@ -22,137 +22,22 @@ const ACTION_STYLE: Record<string, string> = {
 
 const fmt = (v: number, d = 4) => (v >= 0 ? '+' : '') + v.toFixed(d);
 
-/* A hand is edited by rank, so any situation can be posed without dealing to it. */
-function HandEditor({ label, cards, onChange, max }: { label: string; cards: number[]; onChange: (c: number[]) => void; max: number }) {
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{label}</p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {RANKS.map((r, i) => (
-          <button
-            key={r}
-            type="button"
-            disabled={cards.length >= max}
-            onClick={() => onChange([...cards, i])}
-            className="rounded-md border border-slate-700 px-2.5 py-1 font-mono text-sm text-slate-300 hover:border-emerald-500 hover:text-emerald-300 disabled:opacity-40"
-          >
-            {r}
-          </button>
-        ))}
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {cards.length === 0 ? (
-          <span className="text-xs text-slate-500">No cards yet</span>
-        ) : (
-          cards.map((c, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => onChange(cards.filter((_, k) => k !== i))}
-              title="Remove"
-              className="rounded-md bg-slate-100 px-2.5 py-1 font-mono text-sm font-bold text-slate-900 hover:bg-rose-200"
-            >
-              {RANKS[c]}
-            </button>
-          ))
-        )}
-        {cards.length > 0 && (
-          <button type="button" onClick={() => onChange([])} className="ml-1 text-xs text-slate-500 underline hover:text-slate-300">
-            clear
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DecisionPanel({ decision }: { decision: BlackjackDecision }) {
-  const max = Math.max(0.2, ...decision.actions.map((a) => Math.abs(a.ev)));
-  const close = decision.margin !== null && decision.margin < 0.02;
-  return (
-    <>
-      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-        <p className="font-mono text-xs uppercase tracking-widest text-slate-500">
-          {decision.soft ? 'Soft' : 'Hard'} {decision.total} · {decision.unseenCards} cards unseen
-        </p>
-        <p className="mt-1 text-3xl font-black tracking-tight text-emerald-300">{decision.best.action}</p>
-        <p className="mt-1 text-sm text-slate-400">
-          Expected value {fmt(decision.best.ev)} units
-          {decision.actions.length > 1 && <> , against {fmt(decision.actions[1].ev)} for {decision.actions[1].action.toLowerCase()}</>}
-        </p>
-        {close && (
-          <p className="mt-2 inline-block rounded-full bg-amber-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-amber-300">
-            margin {decision.margin!.toFixed(4)} — close either way
-          </p>
-        )}
-      </div>
-      <div className="mt-4 space-y-1">
-        {decision.actions.map((a) => {
-          const w = (Math.abs(a.ev) / max) * 50;
-          const left = a.ev >= 0 ? 50 : 50 - w;
-          return (
-            <div key={a.action} className="grid grid-cols-[76px_1fr_72px] items-center gap-3 py-1">
-              <span className={`text-sm font-bold ${a.action === decision.best.action ? 'text-emerald-300' : 'text-slate-300'}`}>{a.action}</span>
-              <span className="relative h-2 overflow-hidden rounded-full bg-slate-800">
-                <span className="absolute inset-y-0 left-1/2 w-px bg-slate-600" />
-                <span className={`absolute inset-y-0 rounded-full ${a.ev >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ left: `${left}%`, width: `${w}%` }} />
-              </span>
-              <span className={`text-right font-mono text-xs tabular-nums ${a.ev >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmt(a.ev)}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-4">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-slate-500">Dealer finishes</p>
-        <table className="mt-1 w-full text-xs">
-          <thead className="text-slate-500">
-            <tr>{['17', '18', '19', '20', '21', 'bust'].map((h) => <th key={h} scope="col" className="font-mono font-normal">{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            <tr className="text-center font-mono tabular-nums text-slate-300">
-              {decision.dealerDistribution.map((p, i) => (
-                <td key={i} className={i === 5 ? 'text-rose-400' : ''}>{(p * 100).toFixed(1)}</td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
-
 export function BlackjackPage() {
   const [rules, setRules] = useState<BlackjackRules>(DEFAULT_RULES);
-  const [hand, setHand] = useState<number[]>([9, 5]);
-  const [upcard, setUpcard] = useState(9);
-  const [seen, setSeen] = useState<number[]>([]);
-  const [decision, setDecision] = useState<BlackjackDecision | null>(null);
   const [decError, setDecError] = useState<string | null>(null);
   const [sim, setSim] = useState<BlackjackSimulation | null>(null);
   const [simBusy, setSimBusy] = useState(false);
   const [rounds, setRounds] = useState(100000);
-  const [history, setHistory] = useState<CompletedHand[]>([]);
+  const [history, setHistory] = useState<PlayedHand[]>([]);
 
   // Newest first, and capped: the record that matters lives in the database, not in this tab.
-  const onHandComplete = useCallback((completed: CompletedHand) => {
-    setHistory((h) => [completed, ...h].slice(0, 200));
+  const onHandRecorded = useCallback((played: PlayedHand) => {
+    setHistory((h) => [...h, played].slice(-200));
   }, []);
 
   const chart = useApi(() => api.blackjackStrategy(rules), [rules]);
   const edge = useApi(() => api.blackjackEdge(rules), [rules]);
 
-  const solve = useCallback(async () => {
-    if (hand.length < 2) { setDecision(null); setDecError(null); return; }
-    try {
-      setDecError(null);
-      setDecision(await api.blackjackEvaluate({ hand, upcard, seen, rules }));
-    } catch (e: unknown) {
-      setDecision(null);
-      setDecError(e instanceof Error ? e.message : String(e));
-    }
-  }, [hand, upcard, seen, rules]);
-
-  useEffect(() => { void solve(); }, [solve]);
 
   const runSim = async () => {
     setSimBusy(true);
@@ -169,20 +54,20 @@ export function BlackjackPage() {
       <div>
         <h1 className="text-2xl font-bold">Blackjack</h1>
         <p className="mt-1 max-w-3xl text-sm text-slate-400">
-          Play a hand. Every figure beside the table is solved from the cards actually left in the shoe, before you act, and
-          every completed hand is recorded with the forecast that preceded it — so the model is held to what it said rather
-          than to whether the hand was won. No stakes, no money.
+          Enter the hand you are holding and what the dealer shows. It tells you what to play and why, solved from the
+          cards still in the shoe rather than looked up in a chart. Tell it how the hand went and it keeps the advice
+          beside the result, so the model is judged on what it said rather than on whether a hand was won.
         </p>
       </div>
 
-      <BlackjackTable rules={rules} onHandComplete={onHandComplete} />
+      <BlackjackAdvisor rules={rules} onHandRecorded={onHandRecorded} />
 
       <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
         <SessionStats history={history} />
         <LiveModelPanel rules={rules} refreshKey={history.length} />
       </div>
 
-      <Disclosure title="Hand history" subtitle="Every hand played in this session, with the forecast that preceded it" badge={String(history.length)}>
+      <Disclosure title="Hand history" subtitle="Every hand you entered this session, with the advice that preceded it" badge={String(history.length)}>
         <HandHistory history={history} />
       </Disclosure>
 
@@ -234,33 +119,6 @@ export function BlackjackPage() {
         subtitle="The solver on a hand you type in, the full derived chart, and a seeded simulation. Not how the game is played — these are for checking the maths against something."
       >
       <div className="space-y-6">
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Pose a hand" subtitle="Add cards by rank; removed cards leave the shoe">
-          <div className="space-y-4">
-            <HandEditor label="Your hand" cards={hand} onChange={setHand} max={12} />
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Dealer shows</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {RANKS.map((r, i) => (
-                  <button key={r} type="button" onClick={() => setUpcard(i)}
-                    className={`rounded-md border px-2.5 py-1 font-mono text-sm ${upcard === i ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-slate-700 text-slate-300 hover:border-slate-500'}`}>
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <HandEditor label="Other cards already seen (optional)" cards={seen} onChange={setSeen} max={200} />
-          </div>
-        </Card>
-
-        <Card title="Solver">
-          {decError ? <ErrorBox message={decError} />
-            : hand.length < 2 ? <p className="text-sm text-slate-500">Add at least two cards to your hand.</p>
-            : decision ? <DecisionPanel decision={decision} />
-            : <Loading />}
-        </Card>
-      </div>
-
       <Card title="Strategy, derived" subtitle={chart.data ? `${chart.data.cells} cells solved for these rules` : 'Solving…'}>
         {chart.loading ? <Loading /> : chart.error ? <ErrorBox message={chart.error} /> : chart.data && (
           <>

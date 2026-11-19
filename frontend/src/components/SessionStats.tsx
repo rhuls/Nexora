@@ -1,67 +1,59 @@
 import { useState } from 'react';
 import { TokenPrompt } from './TokenPrompt';
-import type { CompletedHand } from './BlackjackTable';
+import type { PlayedHand } from './BlackjackAdvisor';
 
 const signed = (v: number, d = 2): string => (v >= 0 ? '+' : '') + v.toFixed(d);
 
 /**
- * This session, separated into the part the player controls and the part they do not.
+ * This session, with what the player controls kept apart from what they do not.
  *
- * Agreement with the solver is the first; the net is mostly the shoe. Keeping them apart is the
- * point: a losing session played perfectly and a winning one played badly both happen often, and a
- * single figure would hide which is which.
+ * Agreement with the solver is the first. The record of wins and losses is the second, and over a
+ * session it says far more about the shoe than about how the hands were played.
  */
-export function SessionStats({ history }: { history: CompletedHand[] }) {
+export function SessionStats({ history }: { history: PlayedHand[] }) {
   const [dismissed, setDismissed] = useState(false);
   const hands = history.length;
   const decisions = history.reduce((sum, h) => sum + h.decisions.length, 0);
-  const agreed = history.reduce((sum, h) => sum + h.decisions.filter((d) => d.chosen === d.recommended).length, 0);
-  const evLost = history.reduce(
-    (sum, h) => sum + h.decisions.reduce((inner, d) => {
-      const best = Math.max(...d.actionEvs.map((a) => a.ev));
-      const chosen = d.actionEvs.find((a) => a.action === d.chosen)?.ev ?? best;
-      return inner + Math.max(0, best - chosen);
-    }, 0),
-    0,
-  );
-  const net = history.reduce((sum, h) => sum + h.net, 0);
-  const won = history.filter((h) => h.net > 0).length;
-  const lost = history.filter((h) => h.net < 0).length;
-  const pushed = hands - won - lost;
-  // Hands that settled on the deal are not observations by design and are not counted as missing.
-  const unrecorded = history.filter((h) => h.recorded === 'unauthorised' || h.recorded === 'failed').length;
+  const followed = history.reduce((sum, h) => sum + h.decisions.filter((d) => d.chosen === d.recommended).length, 0);
+  const won = history.filter((h) => h.reported === 'win').length;
+  const lost = history.filter((h) => h.reported === 'lose').length;
+  const pushed = history.filter((h) => h.reported === 'push').length;
+  const recorded = history.filter((h) => h.recorded === 'yes').length;
+  const needsToken = history.some((h) => h.recorded === 'unauthorised');
+  const mismatched = history.filter((h) => h.computed !== null && h.computed !== h.reported).length;
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
       <h3 className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">This session</h3>
       {hands === 0 ? (
-        <p className="mt-2 text-sm text-slate-500">No hands yet.</p>
+        <p className="mt-2 text-sm text-slate-500">No hands yet. Enter one and tell it how the hand went.</p>
       ) : (
         <>
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <Stat label="Hands" value={String(hands)} />
-            <Stat label="Won / lost / pushed" value={`${won} / ${lost} / ${pushed}`} />
-            <Stat label="Net" value={signed(net)} tone={net > 0 ? 'good' : net < 0 ? 'bad' : undefined} />
-            <Stat label="Decisions" value={String(decisions)} />
-            <Stat label="Matched the solver" value={decisions === 0 ? '—' : `${((agreed / decisions) * 100).toFixed(0)}%`} />
-            <Stat label="Lost to choices" value={`${evLost.toFixed(3)} bets`} tone={evLost > 0.01 ? 'bad' : undefined} />
+            <Stat label="You reported W/L/P" value={`${won} / ${lost} / ${pushed}`} />
+            <Stat label="In the record" value={`${recorded} of ${hands}`} />
+            <Stat label="Decisions logged" value={String(decisions)} />
+            <Stat label="Took the advice" value={decisions === 0 ? '—' : `${((followed / decisions) * 100).toFixed(0)}%`} />
+            <Stat label="Net reported" value={signed(won - lost)} tone={won > lost ? 'good' : won < lost ? 'bad' : undefined} />
           </dl>
           <p className="mt-3 text-[11px] text-slate-500">
-            <span className="text-slate-400">Lost to choices</span> is what your decisions cost against the solver, and is the
-            only figure here you control. The net is mostly the shoe: perfect play still loses about half a percent a hand.
+            A session that loses is not evidence the advice was wrong, and one that wins is not evidence it was right.
+            Perfect play still loses about half a percent a hand. What the advice is actually judged on is the record
+            below — thousands of hands, scored against what was forecast before each one.
           </p>
-          {unrecorded > 0 && (
-            <div className="mt-2 space-y-2">
-              <p className="text-[11px] text-amber-300">
-                {unrecorded} hand{unrecorded === 1 ? '' : 's'} not added to the observation record. Play is unaffected; the
-                record is what the model is later judged against.
-              </p>
-              {!dismissed && history.some((h) => h.recorded === 'unauthorised') && (
-                <TokenPrompt onSaved={() => setDismissed(true)} />
-              )}
-              {dismissed && <p className="text-[11px] text-slate-500">Saved. Hands from here on are recorded; the ones already played are not retried.</p>}
+          {mismatched > 0 && (
+            <p className="mt-1 text-[11px] text-amber-300">
+              {mismatched} hand{mismatched === 1 ? '' : 's'} where the result you gave differs from the cards you entered.
+              Your answer was recorded either way; worth a glance in case a card was mistyped.
+            </p>
+          )}
+          {needsToken && !dismissed && (
+            <div className="mt-3">
+              <TokenPrompt onSaved={() => setDismissed(true)} />
             </div>
           )}
+          {dismissed && <p className="mt-2 text-[11px] text-slate-500">Saved. Hands from here on join the record.</p>}
         </>
       )}
     </div>

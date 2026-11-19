@@ -1,25 +1,21 @@
 import { useState } from 'react';
-import type { CompletedHand } from './BlackjackTable';
+import type { PlayedHand } from './BlackjackAdvisor';
 
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 const card = (rank: number): string => RANKS[rank] ?? '?';
-const cards = (list: readonly number[]): string => list.map(card).join(' ');
+const cards = (list: readonly number[]): string => (list.length ? list.map(card).join(' ') : '—');
 const pct = (v: number): string => `${(v * 100).toFixed(1)}%`;
-const signed = (v: number, d = 2): string => (v >= 0 ? '+' : '') + v.toFixed(d);
 
-/** Completed hands, newest first, each openable down to the decisions and what they were worth. */
-export function HandHistory({ history }: { history: CompletedHand[] }) {
+/** Hands entered this session, newest first, openable down to the advice each decision got. */
+export function HandHistory({ history }: { history: PlayedHand[] }) {
   const [open, setOpen] = useState<number | null>(null);
-
-  if (history.length === 0) {
-    return <p className="text-sm text-slate-500">No hands played yet in this session.</p>;
-  }
+  if (history.length === 0) return <p className="text-sm text-slate-500">No hands entered yet in this session.</p>;
 
   return (
     <ul className="space-y-1">
-      {history.map((h) => {
+      {[...history].reverse().map((h) => {
         const expanded = open === h.id;
-        const mistakes = h.decisions.filter((d) => d.chosen !== d.recommended).length;
+        const against = h.decisions.filter((d) => d.chosen !== d.recommended).length;
         return (
           <li key={h.id} className="rounded-lg border border-slate-800 bg-slate-900/40">
             <button
@@ -30,31 +26,33 @@ export function HandHistory({ history }: { history: CompletedHand[] }) {
             >
               <span className="font-mono text-[11px] text-slate-600">#{h.id}</span>
               <span className="truncate text-sm text-slate-300">
-                <span className="font-mono">{cards(h.playerCards)}</span>
+                <span className="font-mono">{cards(h.playerFinal)}</span>
                 <span className="mx-2 text-slate-600">vs</span>
                 <span className="font-mono">{card(h.dealerUpcard)}</span>
-                <span className="ml-3 text-slate-500">dealer finished {cards(h.dealerFinal)}</span>
+                {h.dealerFinal.length > 0 && <span className="ml-3 text-slate-500">dealer {cards(h.dealerFinal)}</span>}
               </span>
-              {mistakes > 0 && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-300">{mistakes} off-solver</span>}
-              <span className={`font-mono text-sm ${h.net > 0 ? 'text-emerald-300' : h.net < 0 ? 'text-rose-300' : 'text-slate-400'}`}>{signed(h.net)}</span>
+              {against > 0 && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-300">{against} against advice</span>}
+              <span className={`text-sm ${h.reported === 'win' ? 'text-emerald-300' : h.reported === 'lose' ? 'text-rose-300' : 'text-slate-400'}`}>
+                {h.reported}
+              </span>
             </button>
 
             {expanded && (
               <div className="space-y-3 border-t border-slate-800 p-3 text-sm">
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <Fact label="Result">{h.hands.map((x) => `${cards(x.cards)} → ${x.outcome}`).join(' · ')}</Fact>
-                  <Fact label="Forecast before acting">
+                  <Fact label="You said">{h.reported}{h.computed && h.computed !== h.reported ? ` — the cards entered say ${h.computed}` : ''}</Fact>
+                  <Fact label="Advice before acting">
                     {h.openingForecast
                       ? `stand: win ${pct(h.openingForecast.win)} · push ${pct(h.openingForecast.push)} · lose ${pct(h.openingForecast.lose)}`
-                      : 'settled on the deal; no decision was taken'}
+                      : 'no decision was logged'}
                   </Fact>
-                  <Fact label="Recorded">
-                    {h.recorded === 'yes' ? 'added to the observation record'
-                      : h.recorded === 'unauthorised' ? 'not recorded — needs the deployment token'
-                      : h.recorded === 'failed' ? 'not recorded — the write failed'
-                      : 'not an observation — it settled on the deal, with no decision and no dealer play'}
+                  <Fact label="In the observation record">
+                    {h.recorded === 'yes' ? 'yes'
+                      : h.recorded === 'unauthorised' ? 'no — needs the deployment token'
+                      : h.recorded === 'failed' ? 'no — the write failed'
+                      : 'no — the dealer’s final cards were not entered'}
                   </Fact>
-                  <Fact label="Model">{h.modelVersion}</Fact>
+                  <Fact label="Dealer">{cards(h.dealerFinal)}</Fact>
                 </div>
 
                 {h.decisions.length > 0 && (
@@ -62,8 +60,8 @@ export function HandHistory({ history }: { history: CompletedHand[] }) {
                     <thead className="text-slate-500">
                       <tr>
                         <th scope="col" className="text-left">Holding</th>
-                        <th scope="col" className="text-left">Chose</th>
-                        <th scope="col" className="text-left">Solver</th>
+                        <th scope="col" className="text-left">You</th>
+                        <th scope="col" className="text-left">Advice</th>
                         <th scope="col" className="text-right">Cost</th>
                       </tr>
                     </thead>
@@ -85,8 +83,8 @@ export function HandHistory({ history }: { history: CompletedHand[] }) {
                   </table>
                 )}
                 <p className="text-[11px] text-slate-500">
-                  A cost here is what the choice gave up against the solver, which is a fact about the decision. Whether this
-                  hand was won is not: one hand says nothing about a forecast.
+                  A cost is what a choice gave up against the solver — a fact about the decision. Whether this hand was won
+                  is not: one hand says nothing about a forecast.
                 </p>
               </div>
             )}
