@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BlackjackTrainer } from '../components/BlackjackTrainer';
+import { BlackjackTable, type CompletedHand } from '../components/BlackjackTable';
+import { Disclosure } from '../components/Disclosure';
+import { HandHistory } from '../components/HandHistory';
+import { LiveModelPanel } from '../components/LiveModelPanel';
 import { ModelIntelligence } from '../components/ModelIntelligence';
+import { SessionStats } from '../components/SessionStats';
 import { Card, ErrorBox, Loading, Unavailable, pct } from '../components/ui';
 import { useApi } from '../hooks/useApi';
 import { api, type BlackjackAction, type BlackjackDecision, type BlackjackRules, type BlackjackSimulation } from '../services/api';
@@ -127,6 +131,12 @@ export function BlackjackPage() {
   const [sim, setSim] = useState<BlackjackSimulation | null>(null);
   const [simBusy, setSimBusy] = useState(false);
   const [rounds, setRounds] = useState(100000);
+  const [history, setHistory] = useState<CompletedHand[]>([]);
+
+  // Newest first, and capped: the record that matters lives in the database, not in this tab.
+  const onHandComplete = useCallback((completed: CompletedHand) => {
+    setHistory((h) => [completed, ...h].slice(0, 200));
+  }, []);
 
   const chart = useApi(() => api.blackjackStrategy(rules), [rules]);
   const edge = useApi(() => api.blackjackEdge(rules), [rules]);
@@ -159,14 +169,26 @@ export function BlackjackPage() {
       <div>
         <h1 className="text-2xl font-bold">Blackjack</h1>
         <p className="mt-1 max-w-3xl text-sm text-slate-400">
-          A second domain for the same discipline: compute exactly, verify against a known baseline, and say what was approximated.
-          Every value here is solved from the cards not yet seen — nothing is read from a stored chart. No stakes, no money.
+          Play a hand. Every figure beside the table is solved from the cards actually left in the shoe, before you act, and
+          every completed hand is recorded with the forecast that preceded it — so the model is held to what it said rather
+          than to whether the hand was won. No stakes, no money.
         </p>
       </div>
 
-      <BlackjackTrainer rules={rules} />
+      <BlackjackTable rules={rules} onHandComplete={onHandComplete} />
 
-      <ModelIntelligence rules={rules} />
+      <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+        <SessionStats history={history} />
+        <LiveModelPanel rules={rules} refreshKey={history.length} />
+      </div>
+
+      <Disclosure title="Hand history" subtitle="Every hand played in this session, with the forecast that preceded it" badge={String(history.length)}>
+        <HandHistory history={history} />
+      </Disclosure>
+
+      <Disclosure title="Model intelligence" subtitle="Calibration, segmented weaknesses, and the recalibration trial in full">
+        <ModelIntelligence rules={rules} />
+      </Disclosure>
 
       <Card title="Rules" subtitle="Changing a rule re-derives the chart and the edge rather than invalidating them">
         <div className="flex flex-wrap items-end gap-4">
@@ -207,6 +229,11 @@ export function BlackjackPage() {
         </div>
       </Card>
 
+      <Disclosure
+        title="Reference tools"
+        subtitle="The solver on a hand you type in, the full derived chart, and a seeded simulation. Not how the game is played — these are for checking the maths against something."
+      >
+      <div className="space-y-6">
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Pose a hand" subtitle="Add cards by rank; removed cards leave the shoe">
           <div className="space-y-4">
@@ -331,6 +358,8 @@ export function BlackjackPage() {
         )}
         {!sim && !simBusy && <p className="mt-3 text-sm text-slate-500">Not run yet.</p>}
       </Card>
+      </div>
+      </Disclosure>
 
       <Card title="What is approximate">
         <ul className="space-y-1.5 pl-4 text-sm text-slate-400">

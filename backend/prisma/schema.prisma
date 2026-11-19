@@ -932,6 +932,11 @@ model BlackjackObservation {
   net                     Float
   cardsDrawnAfterForecast Int
 
+  // Every decision point of the hand: the cards held, what the solver valued each action at, what
+  // it recommended, and what was actually chosen. Null for hands recorded before this was kept,
+  // and for simulated hands, where no one was choosing.
+  decisions Json?
+
   modelVersion BlackjackModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
 
   @@index([modelVersionId, predictedAt])

@@ -94,6 +94,26 @@ export function standEV(total: number, dist: Float64Array): number {
   return win - lose;
 }
 
+/**
+ * How a stand ends: the chance of winning, pushing and losing, read off the dealer distribution.
+ *
+ * This is exact for standing and only for standing. Once a card is taken the hand is a different
+ * one, so the right figures to show then are the ones recomputed for that hand.
+ */
+export function standOutcomes(total: number, dist: ArrayLike<number>): { win: number; push: number; lose: number } {
+  if (total > 21) return { win: 0, push: 0, lose: 1 };
+  let win = dist[5];
+  let push = 0;
+  let lose = 0;
+  for (let i = 0; i < 5; i += 1) {
+    const dealer = 17 + i;
+    if (total > dealer) win += dist[i];
+    else if (total === dealer) push += dist[i];
+    else lose += dist[i];
+  }
+  return { win, push, lose };
+}
+
 export type HitMemo = Record<number, number>;
 
 export function hitEV(total: number, soft: boolean, probs: readonly number[], dist: Float64Array, memo: HitMemo): number {

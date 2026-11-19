@@ -291,6 +291,24 @@ export interface BlackjackRules {
   peek: boolean;
 }
 
+export interface StandOutcomes {
+  win: number;
+  push: number;
+  lose: number;
+}
+
+export interface RecordedDecision {
+  cards: number[];
+  total: number;
+  soft: boolean;
+  available: string[];
+  actionEvs: Array<{ action: string; ev: number }>;
+  recommended: string;
+  chosen: string;
+  standOutcomes: StandOutcomes;
+  unseenCards: number;
+}
+
 export interface BlackjackDecision {
   actions: Array<{ action: BlackjackAction; ev: number }>;
   best: { action: BlackjackAction; ev: number };
@@ -510,6 +528,7 @@ export const api = {
   recordObservation: (body: {
     rules: BlackjackRules; seen: number[]; playerCards: number[]; dealerUpcard: number;
     dealerFinalCards: number[]; playerFinalCards: number[]; stake: number; surrendered: boolean;
+    split?: boolean; cardsDrawn?: number; decisions?: RecordedDecision[];
   }) => request<{ recorded: number; dealerOutcome: number; dealerDistribution: number[] }>('/blackjack/observations', { method: 'POST', body: JSON.stringify(body) }),
   modelIntelligence: (rules: BlackjackRules) =>
     request<ModelIntelligence>(`/blackjack/model/intelligence${qs(rules as unknown as Record<string, string | number>)}`),
@@ -518,7 +537,7 @@ export const api = {
   trainerSettle: (body: { rules: BlackjackRules; seen: number[]; dealer: number[]; hands: TrainerHand[] }) =>
     request<TrainerSettlement>('/blackjack/trainer/settle', { method: 'POST', body: JSON.stringify(body) }),
   blackjackEvaluate: (body: { hand: number[]; upcard: number; seen?: number[]; afterSplit?: boolean; rules: BlackjackRules }) =>
-    request<BlackjackDecision>('/blackjack/evaluate', { method: 'POST', body: JSON.stringify(body) }),
+    request<BlackjackDecision & { standOutcomes: StandOutcomes }>('/blackjack/evaluate', { method: 'POST', body: JSON.stringify(body) }),
   blackjackStrategy: (rules: BlackjackRules) => request<BlackjackChart>(`/blackjack/strategy${qs(rules as unknown as Record<string, string | number>)}`),
   blackjackEdge: (rules: BlackjackRules) => request<BlackjackEdge & { rules: BlackjackRules }>(`/blackjack/edge${qs(rules as unknown as Record<string, string | number>)}`),
   blackjackSimulate: (body: { rounds: number; seed: number; rules: BlackjackRules }) =>

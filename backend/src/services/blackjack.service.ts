@@ -2,7 +2,7 @@
 // touches no database, so nothing here can affect a stored football forecast.
 
 import { edge, type EdgeResult } from '../blackjack/edge.js';
-import { evaluate } from '../blackjack/solver.js';
+import { evaluate, standOutcomes } from '../blackjack/solver.js';
 import { buildChart, UPCARD_ORDER, type ChartRow } from '../blackjack/strategy.js';
 import { simulate, type SimulationResult } from '../blackjack/simulator.js';
 import { countCards, freshShoe, type Composition, type Decision, type Rules } from '../blackjack/types.js';
@@ -18,11 +18,12 @@ export class BlackjackService {
     return comp;
   }
 
-  evaluateHand(hand: readonly number[], upcard: number, rules: Rules, seen?: readonly number[], afterSplit = false): Decision {
+  evaluateHand(hand: readonly number[], upcard: number, rules: Rules, seen?: readonly number[], afterSplit = false): Decision & { standOutcomes: { win: number; push: number; lose: number } } {
     // The hand and the upcard are themselves seen cards.
     const comp = this.remaining(rules, [...(seen ?? []), ...hand, upcard]);
     if (countCards(comp) <= 0) throw new Error('No cards remain in the shoe for this configuration');
-    return evaluate(hand, upcard, comp, rules, { afterSplit });
+    const decision = evaluate(hand, upcard, comp, rules, { afterSplit });
+    return { ...decision, standOutcomes: standOutcomes(decision.total, decision.dealerDistribution) };
   }
 
   chart(rules: Rules): { upcards: readonly number[]; rows: ChartRow[]; cells: number } {

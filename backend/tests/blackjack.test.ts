@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { standOutcomes } from '../src/blackjack/solver.js';
 import { addCard, dealerDistribution, evaluate, handTotal, probabilitiesOf, standEV } from '../src/blackjack/solver.js';
 import { buildChart } from '../src/blackjack/strategy.js';
 import { edge, playerEV } from '../src/blackjack/edge.js';
@@ -286,5 +287,43 @@ describe('rules parsing', () => {
   it('rejects a deck count the solver cannot honour', () => {
     expect(RulesSchema.safeParse({ decks: 0 }).success).toBe(false);
     expect(RulesSchema.safeParse({ decks: 99 }).success).toBe(false);
+  });
+});
+
+describe('how a stand ends', () => {
+  // 17, 18, 19, 20, 21, bust.
+  const dist = [0.14, 0.14, 0.13, 0.18, 0.08, 0.33];
+
+  it('splits the dealer distribution into win, push and lose', () => {
+    // Standing on 19: beats 17 and 18 and a bust, ties 19, loses to 20 and 21.
+    const o = standOutcomes(19, dist);
+    expect(o.win).toBeCloseTo(0.14 + 0.14 + 0.33, 12);
+    expect(o.push).toBeCloseTo(0.13, 12);
+    expect(o.lose).toBeCloseTo(0.18 + 0.08, 12);
+  });
+
+  it('always accounts for the whole distribution', () => {
+    for (let total = 4; total <= 21; total += 1) {
+      const o = standOutcomes(total, dist);
+      expect(o.win + o.push + o.lose).toBeCloseTo(1, 12);
+      expect(Math.min(o.win, o.push, o.lose)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('wins only on a dealer bust when the hand cannot beat 17', () => {
+    const o = standOutcomes(16, dist);
+    expect(o.win).toBeCloseTo(0.33, 12);
+    expect(o.push).toBeCloseTo(0, 12);
+  });
+
+  it('loses outright on a bust, whatever the dealer does', () => {
+    expect(standOutcomes(22, dist)).toEqual({ win: 0, push: 0, lose: 1 });
+  });
+
+  it('cannot push against a dealer who never reaches that total', () => {
+    // No dealer 21 in this distribution, so standing on 21 never ties.
+    const noTwentyOne = [0.2, 0.2, 0.2, 0.2, 0, 0.2];
+    expect(standOutcomes(21, noTwentyOne).push).toBe(0);
+    expect(standOutcomes(21, noTwentyOne).win).toBeCloseTo(1, 12);
   });
 });

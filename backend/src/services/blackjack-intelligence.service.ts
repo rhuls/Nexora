@@ -80,6 +80,7 @@ export class BlackjackIntelligenceService {
       settled: o.settled,
       net: o.net,
       cardsDrawnAfterForecast: o.cardsDrawnAfterForecast,
+      decisions: (o.decisions ?? undefined) as unknown as Prisma.InputJsonValue | undefined,
     }));
     let written = 0;
     // Chunked so one oversized request cannot build a single statement the database refuses.
@@ -107,8 +108,15 @@ export class BlackjackIntelligenceService {
     if (isNatural(input.playerCards)) {
       throw new ObservationRejected('The player held a natural, which settles without a decision and without the dealer playing out.');
     }
-    if (input.playerFinalCards.length < input.playerCards.length || input.playerCards.some((c, i) => input.playerFinalCards[i] !== c)) {
+    // After a split the surviving hands start with one of the pair and a fresh card, so they do not
+    // continue the opening hand. Everything the evaluation scores is on the dealer's side, and that
+    // is unaffected: one dealt hand remains one observation, which is what keeps a split from
+    // counting its single dealer outcome twice.
+    if (!input.split && (input.playerFinalCards.length < input.playerCards.length || input.playerCards.some((c, i) => input.playerFinalCards[i] !== c))) {
       throw new ObservationRejected('The final player hand must begin with the cards that were dealt.');
+    }
+    if (input.split && !(input.playerCards.length === 2 && input.playerCards[0] === input.playerCards[1])) {
+      throw new ObservationRejected('A hand marked as split must have been dealt a pair.');
     }
 
     const remaining = remainingComposition(input.rules, [...input.seen, ...input.playerCards, input.dealerUpcard]);
@@ -135,8 +143,9 @@ export class BlackjackIntelligenceService {
       playerTotal: handTotal(input.playerFinalCards)[0],
       settled: settlement.outcome,
       net: settlement.net,
-      cardsDrawnAfterForecast: Math.max(0, input.playerFinalCards.length - input.playerCards.length),
+      cardsDrawnAfterForecast: input.cardsDrawn ?? Math.max(0, input.playerFinalCards.length - input.playerCards.length),
       source: 'PLAYED',
+      decisions: input.decisions,
     };
     return { recorded: await this.record([observation], 'PLAYED'), observation };
   }
@@ -284,6 +293,19 @@ export type EvaluationReport = {
 /** A hand that cannot be scored against the forecast, with the reason given to the caller. */
 export class ObservationRejected extends Error {}
 
+/** One decision point: what was held, what the solver valued, and what the player chose. */
+export interface RecordedDecision {
+  cards: number[];
+  total: number;
+  soft: boolean;
+  available: string[];
+  actionEvs: Array<{ action: string; ev: number }>;
+  recommended: string;
+  chosen: string;
+  standOutcomes: { win: number; push: number; lose: number };
+  unseenCards: number;
+}
+
 export interface PlayedHand {
   rules: Rules;
   /** Cards already out of the shoe before this hand, excluding its own opening cards. */
@@ -295,4 +317,10 @@ export interface PlayedHand {
   stake: number;
   surrendered: boolean;
   predictedAt: Date;
+  decisions?: RecordedDecision[];
+  /** A split makes two player hands against one dealer; the forecast scored is still the dealer's. */
+  split?: boolean;
+  /** Cards the player took after the forecast. Needed for a split, where the final hands do not
+   *  continue the opening pair and the count cannot be inferred from their length. */
+  cardsDrawn?: number;
 }

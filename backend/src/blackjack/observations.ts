@@ -49,6 +49,8 @@ export interface Observation {
    */
   cardsDrawnAfterForecast: number;
   source: ObservationSource;
+  /** Present for a hand someone played: the choices made and what the solver valued them at. */
+  decisions?: unknown;
 }
 
 class Shoe {
